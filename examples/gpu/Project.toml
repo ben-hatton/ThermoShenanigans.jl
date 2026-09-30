@@ -1,0 +1,10 @@
+[deps]
+CUDA = "052768ef-5323-5732-b1bb-66c8b64840ba"
+Oceananigans = "9e8cae18-63c1-5223-a75c-80ca9d6e9a09"
+ThermoShenanigans = "99653c00-4022-43ff-afb8-d728451c8cf4"
+
+[sources]
+ThermoShenanigans = {path = "../.."}
+
+[compat]
+Oceananigans = "0.113"

@@ -1,0 +1,11 @@
+name = "ThermoShenanigans"
+uuid = "99653c00-4022-43ff-afb8-d728451c8cf4"
+authors = ["Benedict Hatton <benedicthatton@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+Oceananigans = "9e8cae18-63c1-5223-a75c-80ca9d6e9a09"
+
+[compat]
+Oceananigans = "0.113"
+julia = "1.10"
