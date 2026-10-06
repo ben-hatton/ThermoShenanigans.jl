@@ -28,9 +28,10 @@ LocalPreferences.toml
 JuliaLocalPreferences.toml
 
 # Keep the pinned environment used for cluster GPU runs
-!examples/gpu/Manifest.toml
+!examples/two_layer_cabbeling/gpu/Manifest.toml
 
 # Simulation output and figures
 *.jld2
 *.mp4
 *.png
+examples/**/output/

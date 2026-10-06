@@ -1,8 +1,8 @@
 #!/bin/bash
-# Batch job for examples/gpu/two_layer_cabbeling_gpu.jl.
+# Batch job for examples/two_layer_cabbeling/gpu/two_layer_cabbeling_gpu.jl.
 # Edit the lines marked EDIT for your cluster, then submit with `sbatch run_gpu.slurm`.
 # One-off setup (login node, which has internet):
-#   julia --project=$REPO/examples/gpu -e 'using Pkg; Pkg.instantiate(); using CUDA; CUDA.set_runtime_version!(v"12.6"); Pkg.precompile()'
+#   julia --project=$REPO/examples/two_layer_cabbeling/gpu -e 'using Pkg; Pkg.instantiate(); using CUDA; CUDA.set_runtime_version!(v"12.6"); Pkg.precompile()'
 
 #SBATCH --job-name=cabbeling-gpu
 #SBATCH --partition=gpu          # EDIT: your GPU partition
@@ -27,4 +27,4 @@ mkdir -p $RUN_DIR
 cd $RUN_DIR
 
 nvidia-smi
-julia --project=$REPO/examples/gpu $REPO/examples/gpu/two_layer_cabbeling_gpu.jl
+julia --project=$REPO/examples/two_layer_cabbeling/gpu $REPO/examples/two_layer_cabbeling/gpu/two_layer_cabbeling_gpu.jl

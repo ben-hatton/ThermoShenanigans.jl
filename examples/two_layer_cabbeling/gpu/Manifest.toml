@@ -901,7 +901,7 @@ version = "0.20.10"
 
 [[deps.ThermoShenanigans]]
 deps = ["Oceananigans"]
-path = "../.."
+path = "../../.."
 uuid = "99653c00-4022-43ff-afb8-d728451c8cf4"
 version = "0.1.0"
 
