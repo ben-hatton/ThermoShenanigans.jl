@@ -66,7 +66,7 @@ geopotential. Approximating $\Sigma$, rather than individual terms in the equati
 thermodynamics consistent. The choice
 
 $$
-\Sigma \approx h^0(\theta, S) - b(\theta, S)\, z
+\Sigma \approx h^0(\theta, S) - b(\theta, S)  z
 $$
 
 yields the simple Boussinesq approximation implemented here.
@@ -86,7 +86,7 @@ fixed by the chosen thermodynamics.
 
 ### Static energy
 $$
-\Sigma(\theta, S, z) = h^0(\theta, S) - b(\theta, S)\, z ,
+\Sigma(\theta, S, z) = h^0(\theta, S) - b(\theta, S)  z ,
 $$
 
 where $z$ is the height relative to the surface. Its derivatives give the thermodynamic conjugate variables
@@ -103,19 +103,20 @@ relative to $(\theta, S, z)$:
 The temperature $T$ and chemical potential $\mu$ are rather the conjugates relative to $(\eta, S, z)$. Their
 expressions require the extra knowledge of $\eta^0(\theta, S)$, which defines entropy as a function of the model's
 entropic variable and salinity.
+
 $$
 \begin{aligned}
 T(\theta, S, z) &= \left(\frac{\partial \Sigma}{\partial \eta}\right)_{S,z} 
 && = \frac{\pi(\theta, S, z)}{\eta^0_\theta(\theta, S)} \\
 \mu(\theta, S, z) &= \left(\frac{\partial \Sigma}{\partial S}\right)_{\eta,z} 
-&& = \Sigma_S(\theta, S, z) - T(\theta, S, z)\, \eta^0_S(\theta, S)
+&& = \Sigma_S(\theta, S, z) - T(\theta, S, z)  \eta^0_S(\theta, S)
 \end{aligned}
 $$
 
 The specific heat capacity is 
 
 $$
-c_p(\theta, S, z) = \frac{T(\theta, S, z)\, \eta^0_\theta(\theta, S)}{T_\theta(\theta, S, z)} .
+c_p(\theta, S, z) = \frac{T(\theta, S, z)  \eta^0_\theta(\theta, S)}{T_\theta(\theta, S, z)} .
 $$
 
 ## Fluxes and tracer equations
@@ -124,25 +125,27 @@ Salt diffuses down the isothermal gradient of the chemical potential,
 
 $$
 (\nabla \mu)_T = \left(\frac{\partial \mu}{\partial S}\right)_{T,z} \nabla S + \left(\frac{\partial \mu}{\partial z}\right)_{T,S} \nabla z
-= \left(\frac{\partial \mu}{\partial S}\right)_{T,z} \left( \nabla S - \Gamma\, \mathbf{k} \right) ,
+= \left(\frac{\partial \mu}{\partial S}\right)_{T,z} \left( \nabla S - \Gamma  \mathbf{k} \right) ,
 \qquad
 \Gamma = -\frac{(\partial \mu / \partial z)_{T,S}}{(\partial \mu / \partial S)_{T,z}} ,
 $$
 
 where $\mathbf{k} = \nabla z$ is the upward unit vector and $\Gamma$ is the barodiffusion gradient. Isothermal
 derivatives of a function $f(\theta, S, z)$ can be written as follows:
+
 $$
-\left(\frac{\partial f}{\partial S}\right)_{T,z} = f_S - f_\theta\, \frac{T_S}{T_\theta} ,
-\qquad
-\left(\frac{\partial f}{\partial z}\right)_{T,S} = f_z - f_\theta\, \frac{T_z}{T_\theta} .
+\left(\frac{\partial f}{\partial S}\right)_{T,z} = f_S - f_\theta  \frac{T_S}{T_\theta} ,
+\quad\quad
+\left(\frac{\partial f}{\partial z}\right)_{T,S} = f_z - f_\theta  \frac{T_z}{T_\theta} .
 $$
 
 Ignoring cross-diffusive (Soret/Dufour) terms, the salt flux $\mathbf{j}_S$ and heat flux $\mathbf{j}_H$ are given by
 
 $$
-\mathbf{j}_S = -\kappa_S \left( \nabla S - \Gamma\, \mathbf{k} \right), 
+\mathbf{j}_S = -\kappa_S \left( \nabla S - \Gamma  \mathbf{k} \right), 
 \quad \mathbf{j}_H = - c_p \kappa_T \nabla T.
 $$
+
 where $\kappa_S$ and $\kappa_T$ are the molecular diffusivities. From this, the flux of $\theta$ is given by
 
 $$
@@ -159,25 +162,25 @@ $$
 $$
 
 with the production of $\theta$ given by
+
 $$
 \sigma_\theta = \frac{\varepsilon - \mathbf{j}_\theta \cdot \nabla \pi - \mathbf{j}_S \cdot \nabla \Sigma_S}{\pi},
 $$
 
-where for viscous stress tensor $\tau_{ij}$, the viscous dissipation rate is $\varepsilon = \tau_{ij}\, \partial_j u_i $.
+where for viscous stress tensor $\tau_{ij}$, the viscous dissipation rate is $\varepsilon = \tau_{ij}  \partial_j u_i $.
 
 The total energy $E = \tfrac{1}{2}|\mathbf{u}|^2 + \Sigma$ satisfies the following conservation equation:
-$$
-\frac{DE}{Dt} + \nabla \cdot \left(\pi\, \mathbf{j}_\theta + \Sigma_S\, \mathbf{j}_S + p\, \mathbf{u} - \mathbf{u} \cdot \boldsymbol{\tau}\right) = 0 .
-$$
-
-The entropy
-production is
 
 $$
-\sigma_\eta = \frac{\varepsilon}{T}
-+ \kappa_T\, \frac{c_p}{T^2}\, |\nabla T|^2
-+ \kappa_S\, \frac{(\partial \mu / \partial S)_{T,z}}{T}\, \left| \nabla S - \Gamma\, \mathbf{k} \right|^2.
+\frac{DE}{Dt} + \nabla \cdot \left(\pi  \mathbf{j}_\theta + \Sigma_S  \mathbf{j}_S + p  \mathbf{u} - \mathbf{u} \cdot \boldsymbol{\tau}\right) = 0 .
 $$
+
+The entropy production is
+
+$$
+\sigma_\eta = \frac{\varepsilon}{T} + \kappa_T  \frac{c_p}{T^2}  |\nabla T|^2 + \kappa_S  \frac{(\partial \mu / \partial S)_{T,z}}{T}  \left| \nabla S - \Gamma  \mathbf{k} \right|^2.
+$$
+
 With `consistent = false`, `thermodynamic_model_components` instead uses the standard Fickian closure:
 
 
@@ -196,13 +199,13 @@ $$
 $$
 \begin{aligned}
 b &= g \left[ \alpha (\theta - \theta_r) + \tfrac{1}{2} \gamma (\theta - \theta_r)^2 - \beta (S - S_r) \right] , \\
-h^0 &= c_p^0\, \theta , \\
-\eta^0 &= c_p^0 \ln(\theta / \theta_r) - R_\eta\, S (\ln S - 1) .
+h^0 &= c_p^0  \theta , \\
+\eta^0 &= c_p^0 \ln(\theta / \theta_r) - R_\eta  S (\ln S - 1) .
 \end{aligned}
 $$
 
-The default $R_\eta = R / M_S \approx 264.76\ \mathrm{J\,kg^{-1}\,K^{-1}}$
-is the ideal entropy of mixing of sea salt, with $M_S = 31.4038218\ \mathrm{g\,mol^{-1}}$ (Millero et al. 2008).
+The default $R_\eta = R / M_S \approx 264.76\ \mathrm{J kg^{-1} K^{-1}}$
+is the ideal entropy of mixing of sea salt, with $M_S = 31.4038218\ \mathrm{g mol^{-1}}$ (Millero et al. 2008).
 For this thermodynamics, $T = \pi \theta / c_p^0$ and $\Gamma = -g \beta S / (R_\eta T)$.
 
 ### Your own thermodynamics
@@ -237,20 +240,22 @@ conditions.
 
 The discrete equations conserve energy exactly (up to round-off and the time-stepping error) because of three choices:
 
-1. **Buoyancy force.** The $w$ equation uses the discrete-gradient buoyancy
+**Buoyancy force.** The $w$ equation uses the discrete-gradient buoyancy
 
    $$
-   \tilde b = \frac{\delta_z(b\, z) - \overline{b_\theta\, z}^z\, \delta_z \theta - \overline{b_S\, z}^z\, \delta_z S}{\Delta z}
+   \tilde b = \frac{\delta_z(b  z) - \overline{b_\theta  z}^z  \delta_z \theta - \overline{b_S  z}^z  \delta_z S}{\Delta z}
    $$
-
+   
    at $w$-points, where $\delta_z$ is the vertical difference and $\overline{(\cdot)}^z$ the vertical average.
-   With second-order centred tracer advection, the buoyancy work $\sum w \tilde b\, \Delta V$ then exactly balances
-   the advective change of $\sum \Sigma\, \Delta V$ whenever $h^0$ and $b$ are at most quadratic in $(\theta, S)$.
+   With second-order centred tracer advection, the buoyancy work $\sum w \tilde b  \Delta V$ then exactly balances
+   the advective change of $\sum \Sigma  \Delta V$ whenever $h^0$ and $b$ are at most quadratic in $(\theta, S)$.
    For a linear $b$, $\tilde b$ is the usual average $\overline{b}^z$.
-2. **Dissipation.** $\varepsilon$ is assembled from the viscous fluxes at their native locations, so that
-   $\sum \varepsilon\, \Delta V$ is exactly the kinetic energy removed by the viscous closure.
-3. **Flux conversions.** $\mathbf{j} \cdot \nabla \pi$ is formed at faces and averaged to centres, so that by summation
-   by parts $\sum (\mathbf{j}_\theta \cdot \nabla \pi)\, \Delta V = -\sum \pi\, (\nabla \cdot \mathbf{j}_\theta)\, \Delta V$.
+
+**Dissipation.** $\varepsilon$ is assembled from the viscous fluxes at their native locations, so that
+   $\sum \varepsilon  \Delta V$ is exactly the kinetic energy removed by the viscous closure.
+
+**Flux conversions.** $\mathbf{j} \cdot \nabla \pi$ is formed at faces and averaged to centres, so that by summation
+   by parts $\sum (\mathbf{j}_\theta \cdot \nabla \pi)  \Delta V = -\sum \pi  (\nabla \cdot \mathbf{j}_\theta)  \Delta V$.
 
 Exact conservation requires Oceananigans' default `Centered(order = 2)` advection for momentum and tracers.
 $\sigma_\theta$ evaluates $\varepsilon$ without closure fields, so momentum closures that compute their own fields
@@ -271,13 +276,13 @@ advective_momentum_flux_Uw = Axᶠᶜᶠ * ℑzᵃᵃᶠ(u) * ℑxᶠᵃᵃ(w)
 advective_momentum_flux_Vw = Ayᶜᶠᶠ * ℑzᵃᵃᶠ(v) * ℑyᵃᶠᵃ(w)
 ```
 
-that is, $A_x^{(w)}\, \overline{u}^z$ with the face area $A_x^{(w)} = \Delta y\, \Delta z^{(w)}$ of the $w$-cell,
+that is, $A_x^{(w)}  \overline{u}^z$ with the face area $A_x^{(w)} = \Delta y  \Delta z^{(w)}$ of the $w$-cell,
 rather than the
 volume flux $\overline{A_x u}^z$ that the docstring of `div_𝐯w` states. The two agree only when neighbouring cells
 have equal thickness. Otherwise the velocity transporting $w$-momentum is not discretely divergence-free over the
 $w$-cells, and the advection term leaks kinetic energy. The $u$ and $v$ equations are unaffected. In a stretched-grid
-test with no buoyancy and no closure, $\int w\, G_w\, dV \approx 8 \times 10^{-9}$ while $\int u\, G_u\, dV$ and
-$\int v\, G_v\, dV$ are at round-off ($10^{-22}$). The energy drift on stretched grids therefore comes from
+test with no buoyancy and no closure, $\int w  G_w  dV \approx 8 \times 10^{-9}$ while $\int u  G_u  dV$ and
+$\int v  G_v  dV$ are at round-off ($10^{-22}$). The energy drift on stretched grids therefore comes from
 Oceananigans, not from ThermoShenanigans; the stretched-grid energy test turns off momentum advection for this reason.
 
 ## Examples
