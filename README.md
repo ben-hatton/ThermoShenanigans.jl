@@ -12,7 +12,8 @@ heat and salt fluxes derived from a full thermodynamic description of the fluid,
 * entropy production is non-negative, as the second law requires.
 
 Choose the thermodynamics by supplying the buoyancy $b(\theta, S)$, potential enthalpy $h^0(\theta, S)$ and
-entropy $\eta^0(\theta, S)$. Everything else (temperature, heat capacity, chemical potential, fluxes, production terms) is derived from them.
+entropy $\eta^0(\theta, S)$. Everything else (temperature, heat capacity, chemical potential, fluxes, production
+terms) is derived from them.
 
 ## Quick start
 
@@ -80,24 +81,28 @@ The thermodynamics is defined by three functions of $\theta$ and $S$:
 | $h^0(\theta, S)$ | potential enthalpy |
 | $\eta^0(\theta, S)$ | specific entropy |
 
-$\theta$ is a generic entropic variable, such as potential temperature or Conservative Temperature; its meaning is fixed by the chosen thermodynamics.
+$\theta$ is a generic entropic variable, such as potential temperature or Conservative Temperature; its meaning is
+fixed by the chosen thermodynamics.
 
 ### Static energy
 $$
 \Sigma(\theta, S, z) = h^0(\theta, S) - b(\theta, S)\, z ,
 $$
 
-where $z$ is the height relative to the surface. Its derivatives give the thermodynamic conjugate variables relative to $(\theta, S, z)$:
+where $z$ is the height relative to the surface. Its derivatives give the thermodynamic conjugate variables
+relative to $(\theta, S, z)$:
 
 | Derivative | Expression | Name |
 |---|---|---|
-| $\Sigma_\theta$| $h^0_\theta(\theta, S) - b_\theta(\theta, S) z$ | Exner function, $\pi$ |
+| $\Sigma_\theta$ | $h^0_\theta(\theta, S) - b_\theta(\theta, S) z$ | Exner function, $\pi$ |
 | $\Sigma_S$ | $h^0_S(\theta, S) - b_S(\theta, S)z$ | Chemical potential analogue [(de Szoeke, 2000)](https://journals.ametsoc.org/view/journals/phoc/30/11/1520-0485_2001_031_2814__2.0.co_2.xml) |
-| $\Sigma_z$ | $b(\theta, S)$ | Buoyancy |
+| $\Sigma_z$ | $-b(\theta, S)$ | Minus the buoyancy |
 
 ### Temperature and chemical potential
 
-The temperature $T$ and chemical potential $\mu$ are rather the conjugates relative to $(\eta, S, z)$. Their expressions require the extra knowledge of $\eta^0(\theta, S)$, which defines entropy as a function of the model's entropic variable and salinity.
+The temperature $T$ and chemical potential $\mu$ are rather the conjugates relative to $(\eta, S, z)$. Their
+expressions require the extra knowledge of $\eta^0(\theta, S)$, which defines entropy as a function of the model's
+entropic variable and salinity.
 $$
 \begin{aligned}
 T(\theta, S, z) &= \left(\frac{\partial \Sigma}{\partial \eta}\right)_{S,z} 
@@ -124,7 +129,8 @@ $$
 \Gamma = -\frac{(\partial \mu / \partial z)_{T,S}}{(\partial \mu / \partial S)_{T,z}} ,
 $$
 
-where $\mathbf{k} = \nabla z$ is the upward unit vector and $\Gamma$ is the barodiffusion gradient. Isothermal derivatives of a function $f(\theta, S, z)$ can be written as follows:
+where $\mathbf{k} = \nabla z$ is the upward unit vector and $\Gamma$ is the barodiffusion gradient. Isothermal
+derivatives of a function $f(\theta, S, z)$ can be written as follows:
 $$
 \left(\frac{\partial f}{\partial S}\right)_{T,z} = f_S - f_\theta\, \frac{T_S}{T_\theta} ,
 \qquad
@@ -225,7 +231,9 @@ your own.
 
 ## Discretisation
 
-All thermodynamic functions are evaluated at cell centres from the centred $\theta$, $S$ and $z$, and then differenced or interpolated to faces. The fluxes are zero at walls, where Oceananigans applies the boundary conditions.
+All thermodynamic functions are evaluated at cell centres from the centred $\theta$, $S$ and $z$, and then
+differenced or interpolated to faces. The fluxes are zero at walls, where Oceananigans applies the boundary
+conditions.
 
 The discrete equations conserve energy exactly (up to round-off and the time-stepping error) because of three choices:
 
@@ -263,7 +271,8 @@ advective_momentum_flux_Uw = Axᶠᶜᶠ * ℑzᵃᵃᶠ(u) * ℑxᶠᵃᵃ(w)
 advective_momentum_flux_Vw = Ayᶜᶠᶠ * ℑzᵃᵃᶠ(v) * ℑyᵃᶠᵃ(w)
 ```
 
-that is, $A_x^{(w)}\, \overline{u}^z$ with the face area $A_x^{(w)} = \Delta y\, \Delta z^{(w)}$ of the $w$-cell, rather than the
+that is, $A_x^{(w)}\, \overline{u}^z$ with the face area $A_x^{(w)} = \Delta y\, \Delta z^{(w)}$ of the $w$-cell,
+rather than the
 volume flux $\overline{A_x u}^z$ that the docstring of `div_𝐯w` states. The two agree only when neighbouring cells
 have equal thickness. Otherwise the velocity transporting $w$-momentum is not discretely divergence-free over the
 $w$-cells, and the advection term leaks kinetic energy. The $u$ and $v$ equations are unaffected. In a stretched-grid
@@ -282,13 +291,13 @@ Oceananigans, not from ThermoShenanigans; the stretched-grid energy test turns o
 
 Run them with, for example,
 
-```
+```bash
 julia --project=examples examples/energy_conservation/energy_conservation.jl
 ```
 
 ## Tests
 
-```
+```bash
 julia --project -e 'using Pkg; Pkg.test(julia_args = ["--check-bounds=auto"])'
 ```
 
