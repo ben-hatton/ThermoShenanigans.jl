@@ -1,3 +1,12 @@
+"""
+    ThermodynamicBuoyancy
+
+Buoyancy formulation with b(θ, S) from `thermodynamics`. Fields:
+
+* `thermodynamics`: an `AbstractBoussinesqThermodynamics`
+* `surface_height`: height z at which the pressure is the reference pressure P₀
+* `constant_salinity`: the value at which S is held, or `nothing` if S is a tracer
+"""
 struct ThermodynamicBuoyancy{TH, FT, S} <: AbstractBuoyancyFormulation{TH}
     thermodynamics :: TH
     surface_height :: FT
@@ -16,10 +25,10 @@ julia> using Oceananigans, ThermoShenanigans
 
 julia> grid = RectilinearGrid(size=(4, 4), x=(0, 1), z=(-1, 0), topology=(Periodic, Flat, Bounded));
 
-julia> thermo = CabbelingBoussinesqThermodynamics(thermal_expansion = 2e-4, haline_contraction = 0.8, reference_temperature = 283,
-                                                  reference_salinity = 0.035, reference_heat_capacity = 4000);
+julia> thermodynamics = CabbelingBoussinesqThermodynamics(thermal_expansion = 2e-4, haline_contraction = 0.8, reference_temperature = 283,
+                                                          reference_salinity = 0.035, reference_heat_capacity = 4000);
 
-julia> ThermodynamicBuoyancy(grid, thermo)
+julia> ThermodynamicBuoyancy(grid, thermodynamics)
 ThermodynamicBuoyancy with CabbelingBoussinesqThermodynamics{Float64} and surface_height=0.0
 ```
 """
@@ -33,55 +42,59 @@ function ThermodynamicBuoyancy(grid, thermodynamics::AbstractBoussinesqThermodyn
     return ThermodynamicBuoyancy(thermodynamics, convert(FT, surface_height), constant_salinity)
 end
 
+# Buoyancy with S held constant, for which only θ is a tracer
 const ConstantSalinityThermodynamicBuoyancy = ThermodynamicBuoyancy{<:Any, <:Any, <:Number}
 
 required_tracers(::ThermodynamicBuoyancy) = (:θ, :S)
 required_tracers(::ConstantSalinityThermodynamicBuoyancy) = (:θ,)
 
+# Return (θ, S) from the tracers C, with S the constant value if there is one
 @inline get_temperature_and_salinity(::ThermodynamicBuoyancy, C) = C.θ, C.S
-@inline get_temperature_and_salinity(tb::ConstantSalinityThermodynamicBuoyancy, C) = C.θ, tb.constant_salinity
+@inline get_temperature_and_salinity(buoyancy_formulation::ConstantSalinityThermodynamicBuoyancy, C) =
+    C.θ, buoyancy_formulation.constant_salinity
 
-#####
-##### Thermodynamic functions at (Center, Center, Center), from the centred θ, S and z
-#####
+# Thermodynamic functions at (Center, Center, Center), from the centred θ, S and z
 
-@inline height_above_surfaceᶜᶜᶜ(i, j, k, grid, tb) = znode(i, j, k, grid, Center(), Center(), Center()) - tb.surface_height
+@inline height_above_surfaceᶜᶜᶜ(i, j, k, grid, buoyancy_formulation) =
+    znode(i, j, k, grid, Center(), Center(), Center()) - buoyancy_formulation.surface_height
 
-# f(θ, S, z, thermo), e.g. π, μ or T
-@inline thermodynamic_functionᶜᶜᶜ(i, j, k, grid, f::F, tb, C) where F =
-    f(θ_and_sᴬ(i, j, k, get_temperature_and_salinity(tb, C)...)..., height_above_surfaceᶜᶜᶜ(i, j, k, grid, tb), tb.thermodynamics)
+# Evaluate f(θ, S, z, thermodynamics), e.g. f = exner, chemical_potential or temperature
+@inline thermodynamic_functionᶜᶜᶜ(i, j, k, grid, f::F, buoyancy_formulation, C) where F =
+    f(θ_and_sᴬ(i, j, k, get_temperature_and_salinity(buoyancy_formulation, C)...)...,
+      height_above_surfaceᶜᶜᶜ(i, j, k, grid, buoyancy_formulation), buoyancy_formulation.thermodynamics)
 
-# z-independent functions in the same form
-@inline θ_value(θ, S, z, t)    = θ
-@inline S_value(θ, S, z, t)    = S
-@inline buoyancy_θ(θ, S, z, t) = ∂b∂θ(θ, S, t)
-@inline buoyancy_S(θ, S, z, t) = ∂b∂S(θ, S, t)
+# Functions of θ and S only, in the same form as f above so that thermodynamic_functionᶜᶜᶜ evaluates them too
+@inline θ_value(θ, S, z, thermodynamics)    = θ
+@inline S_value(θ, S, z, thermodynamics)    = S
+@inline buoyancy_θ(θ, S, z, thermodynamics) = ∂b∂θ(θ, S, thermodynamics)
+@inline buoyancy_S(θ, S, z, thermodynamics) = ∂b∂S(θ, S, thermodynamics)
 
 # b at (Center, Center, Center); the w equation uses the energy-consistent b̃ below rather than ℑz b
-@inline buoyancy_perturbationᶜᶜᶜ(i, j, k, grid, tb::ThermodynamicBuoyancy, C) =
-    buoyancy(θ_and_sᴬ(i, j, k, get_temperature_and_salinity(tb, C)...)..., tb.thermodynamics)
+@inline buoyancy_perturbationᶜᶜᶜ(i, j, k, grid, buoyancy_formulation::ThermodynamicBuoyancy, C) =
+    buoyancy(θ_and_sᴬ(i, j, k, get_temperature_and_salinity(buoyancy_formulation, C)...)..., buoyancy_formulation.thermodynamics)
 
-@inline ∂x_b(i, j, k, grid, tb::ThermodynamicBuoyancy, C) = ∂xᶠᶜᶜ(i, j, k, grid, buoyancy_perturbationᶜᶜᶜ, tb, C)
-@inline ∂y_b(i, j, k, grid, tb::ThermodynamicBuoyancy, C) = ∂yᶜᶠᶜ(i, j, k, grid, buoyancy_perturbationᶜᶜᶜ, tb, C)
-@inline ∂z_b(i, j, k, grid, tb::ThermodynamicBuoyancy, C) = ∂zᶜᶜᶠ(i, j, k, grid, buoyancy_perturbationᶜᶜᶜ, tb, C)
+@inline ∂x_b(i, j, k, grid, buoyancy_formulation::ThermodynamicBuoyancy, C) = ∂xᶠᶜᶜ(i, j, k, grid, buoyancy_perturbationᶜᶜᶜ, buoyancy_formulation, C)
+@inline ∂y_b(i, j, k, grid, buoyancy_formulation::ThermodynamicBuoyancy, C) = ∂yᶜᶠᶜ(i, j, k, grid, buoyancy_perturbationᶜᶜᶜ, buoyancy_formulation, C)
+@inline ∂z_b(i, j, k, grid, buoyancy_formulation::ThermodynamicBuoyancy, C) = ∂zᶜᶜᶠ(i, j, k, grid, buoyancy_perturbationᶜᶜᶜ, buoyancy_formulation, C)
 
-#####
-##### Energy-consistent buoyancy force at w-points
-#####
+#=
+Energy-consistent buoyancy force at w-points: the discrete-gradient buoyancy
+    b̃ = [δz(b z) - ℑz(b_θ z) δzθ - ℑz(b_S z) δzS] / Δz   at (Center, Center, Face).
+With centred second-order tracer advection, the buoyancy work Σ w b̃ V then exactly balances the advective change of
+Σ Σ(θ, S, z) V whenever h⁰ and b are at most quadratic in (θ, S). For a linear b, b̃ = ℑz b.
+=#
+@inline buoyancy_height(θ, S, z, thermodynamics)   = buoyancy(θ, S, thermodynamics) * z
+@inline buoyancy_θ_height(θ, S, z, thermodynamics) = ∂b∂θ(θ, S, thermodynamics) * z
+@inline buoyancy_S_height(θ, S, z, thermodynamics) = ∂b∂S(θ, S, thermodynamics) * z
 
-# Discrete-gradient buoyancy b̃ = [δz(b z) - ℑz(b_θ z) δzθ - ℑz(b_S z) δzS] / Δz at (Center, Center, Face).
-# With centred second-order tracer advection, the buoyancy work Σ w b̃ V then exactly balances the advective change of
-# Σ Σ(θ, S, z) V whenever h⁰ and b are at most quadratic in (θ, S). For a linear b, b̃ = ℑz b.
-@inline buoyancy_height(θ, S, z, t)   = buoyancy(θ, S, t) * z
-@inline buoyancy_θ_height(θ, S, z, t) = ∂b∂θ(θ, S, t) * z
-@inline buoyancy_S_height(θ, S, z, t) = ∂b∂S(θ, S, t) * z
-
-@inline consistent_buoyancyᶜᶜᶠ(i, j, k, grid, tb, C) =
-    (δzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, buoyancy_height, tb, C) -
-     ℑzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, buoyancy_θ_height, tb, C) * δzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, θ_value, tb, C) -
-     ℑzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, buoyancy_S_height, tb, C) * δzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, S_value, tb, C)) /
+@inline consistent_buoyancyᶜᶜᶠ(i, j, k, grid, buoyancy_formulation, C) =
+    (δzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, buoyancy_height, buoyancy_formulation, C) -
+     ℑzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, buoyancy_θ_height, buoyancy_formulation, C) *
+     δzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, θ_value, buoyancy_formulation, C) -
+     ℑzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, buoyancy_S_height, buoyancy_formulation, C) *
+     δzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, S_value, buoyancy_formulation, C)) /
     Δzᶜᶜᶠ(i, j, k, grid)
 
 # Oceananigans uses z_dot_g_bᶜᶜᶠ for both the w equation and the hydrostatic pressure anomaly (gravity along -z only)
-@inline z_dot_g_bᶜᶜᶠ(i, j, k, grid, bf::BuoyancyForce{<:ThermodynamicBuoyancy, NegativeZDirection}, C) =
-    consistent_buoyancyᶜᶜᶠ(i, j, k, grid, bf.formulation, C)
+@inline z_dot_g_bᶜᶜᶠ(i, j, k, grid, buoyancy_force::BuoyancyForce{<:ThermodynamicBuoyancy, NegativeZDirection}, C) =
+    consistent_buoyancyᶜᶜᶠ(i, j, k, grid, buoyancy_force.formulation, C)

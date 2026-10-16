@@ -1,20 +1,24 @@
 Base.summary(::CabbelingBoussinesqThermodynamics{FT}) where FT = "CabbelingBoussinesqThermodynamics{$FT}"
-Base.summary(tb::ThermodynamicBuoyancy) = string("ThermodynamicBuoyancy with ", summary(tb.thermodynamics))
+Base.summary(buoyancy_formulation::ThermodynamicBuoyancy) =
+    string("ThermodynamicBuoyancy with ", summary(buoyancy_formulation.thermodynamics))
 
-Base.show(io::IO, t::CabbelingBoussinesqThermodynamics) =
-    print(io, summary(t), "(g=", prettysummary(t.gravitational_acceleration),
-                          ", α=", prettysummary(t.thermal_expansion),
-                          ", β=", prettysummary(t.haline_contraction),
-                          ", γ=", prettysummary(t.cabbeling_coefficient),
-                          ", θᵣ=", prettysummary(t.reference_temperature),
-                          ", Sᵣ=", prettysummary(t.reference_salinity),
-                          ", cₚ⁰=", prettysummary(t.reference_heat_capacity),
-                          ", R_η=", prettysummary(t.saline_entropy_constant), ")")
+Base.show(io::IO, thermodynamics::CabbelingBoussinesqThermodynamics) =
+    print(io, summary(thermodynamics), "(g=", prettysummary(thermodynamics.gravitational_acceleration),
+                                       ", α=", prettysummary(thermodynamics.thermal_expansion),
+                                       ", β=", prettysummary(thermodynamics.haline_contraction),
+                                       ", γ=", prettysummary(thermodynamics.cabbeling_coefficient),
+                                       ", θᵣ=", prettysummary(thermodynamics.reference_temperature),
+                                       ", Sᵣ=", prettysummary(thermodynamics.reference_salinity),
+                                       ", cₚ⁰=", prettysummary(thermodynamics.reference_heat_capacity),
+                                       ", R_S=", prettysummary(thermodynamics.saline_entropy_constant), ")")
 
-Base.show(io::IO, tb::ThermodynamicBuoyancy) = print(io, summary(tb), " and surface_height=", prettysummary(tb.surface_height))
-Base.show(io::IO, tb::ConstantSalinityThermodynamicBuoyancy) = print(io, summary(tb), " and surface_height=", prettysummary(tb.surface_height),
-                                                                     ", constant_salinity=", prettysummary(tb.constant_salinity))
+Base.show(io::IO, buoyancy_formulation::ThermodynamicBuoyancy) =
+    print(io, summary(buoyancy_formulation), " and surface_height=", prettysummary(buoyancy_formulation.surface_height))
+Base.show(io::IO, buoyancy_formulation::ConstantSalinityThermodynamicBuoyancy) =
+    print(io, summary(buoyancy_formulation), " and surface_height=", prettysummary(buoyancy_formulation.surface_height),
+                                             ", constant_salinity=", prettysummary(buoyancy_formulation.constant_salinity))
 
-Base.summary(cl::ThermodynamicDiffusivity) = string("ThermodynamicDiffusivity(κ_T=", prettysummary(cl.thermal_diffusivity),
-                                                    ", κ_S=", prettysummary(cl.salt_diffusivity), ")")
-Base.show(io::IO, cl::ThermodynamicDiffusivity) = print(io, summary(cl))
+Base.summary(closure::ThermodynamicDiffusivity) =
+    string("ThermodynamicDiffusivity(κ_T=", prettysummary(closure.thermal_diffusivity),
+           ", κ_S=", prettysummary(closure.salt_diffusivity), ")")
+Base.show(io::IO, closure::ThermodynamicDiffusivity) = print(io, summary(closure))

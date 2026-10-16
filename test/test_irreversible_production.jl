@@ -21,8 +21,8 @@ using ThermoShenanigans: flux_contractionᶜᶜᶜ, thermodynamic_functionᶜᶜ
     end
 
     # The coupled thermodynamics is covered by the semi-discrete energy identity in test_energy_conservation.jl
-    @testset "Closure and σ_θ conserve 𝒦 + Σ [$(summary(t))]" for t in (cabbeling,)
-        model = component_model(grid, t)
+    @testset "Closure and σ_θ conserve 𝒦 + Σ [$(summary(thermodynamics))]" for thermodynamics in (cabbeling,)
+        model = component_model(grid, thermodynamics)
         set_random_state!(model)
         d = thermodynamic_diagnostics(model)
         σ_θ = KernelFunctionOperation{Center, Center, Center}(model.forcing.θ, grid, model.clock, merge(model.velocities, model.tracers))
@@ -38,30 +38,30 @@ using ThermoShenanigans: flux_contractionᶜᶜᶜ, thermodynamic_functionᶜᶜ
         @test dissipation > 0
     end
 
-    @testset "σ_η ≥ 0 [$(summary(t))]" for t in (cabbeling, coupled)
-        model = component_model(grid, t)
+    @testset "σ_η ≥ 0 [$(summary(thermodynamics))]" for thermodynamics in (cabbeling, coupled)
+        model = component_model(grid, thermodynamics)
         set_random_state!(model)
         σ_η = computed(thermodynamic_diagnostics(model).σ_η)
         @test all(≥(0), σ_η) && any(>(0), σ_η)
 
-        model = component_model(test_grid(size = (1, 1, 16), extent = (1, 1, 1000)), t)
-        set_resting_equilibrium!(model, t)
+        model = component_model(test_grid(size = (1, 1, 16), extent = (1, 1, 1000)), thermodynamics)
+        set_resting_equilibrium!(model, thermodynamics)
         @test maximum(abs, computed(thermodynamic_diagnostics(model).σ_η)) < 1e-20
     end
 
-    @testset "σ_b = b_θ σ_θ + σ_b_nonlin [$(summary(t))]" for t in (linear, cabbeling)
-        model = component_model(grid, t)
+    @testset "σ_b = b_θ σ_θ + σ_b_nonlin [$(summary(thermodynamics))]" for thermodynamics in (linear, cabbeling)
+        model = component_model(grid, thermodynamics)
         set_random_state!(model)
-        C, tb, cl = merge(model.velocities, model.tracers), model.buoyancy.formulation, model.closure[2]
+        C, buoyancy_formulation, closure = merge(model.velocities, model.tracers), model.buoyancy.formulation, model.closure[2]
         d = thermodynamic_diagnostics(model)
         σ_b_nonlin = computed(d.σ_b_nonlin)
 
         # σ_b_nonlin = j_θ·∇b_θ + j_S·∇b_S = g γ j_θ·∇θ for the cabbeling equation of state
-        zero_value(θ, S, z, t) = zero(θ)
-        j_θ_dot_∇θ = KernelFunctionOperation{Center, Center, Center}(flux_contractionᶜᶜᶜ, grid, θ_value, zero_value, cl, tb, C)
-        @test σ_b_nonlin ≈ t.gravitational_acceleration * t.cabbeling_coefficient .* computed(j_θ_dot_∇θ) rtol = 1e-12 atol = 1e-20
+        zero_value(θ, S, z, thermodynamics) = zero(θ)
+        j_θ_dot_∇θ = KernelFunctionOperation{Center, Center, Center}(flux_contractionᶜᶜᶜ, grid, θ_value, zero_value, closure, buoyancy_formulation, C)
+        @test σ_b_nonlin ≈ thermodynamics.gravitational_acceleration * thermodynamics.cabbeling_coefficient .* computed(j_θ_dot_∇θ) rtol = 1e-12 atol = 1e-20
 
-        b_θ = computed(KernelFunctionOperation{Center, Center, Center}(thermodynamic_functionᶜᶜᶜ, grid, buoyancy_θ, tb, C))
+        b_θ = computed(KernelFunctionOperation{Center, Center, Center}(thermodynamic_functionᶜᶜᶜ, grid, buoyancy_θ, buoyancy_formulation, C))
         @test computed(d.σ_b) ≈ b_θ .* computed(d.σ_θ) .+ σ_b_nonlin
     end
 

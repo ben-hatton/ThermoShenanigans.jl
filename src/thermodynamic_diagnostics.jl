@@ -1,3 +1,11 @@
+# KernelFunctionOperation at (Center, Center, Center) of f(i, j, k, grid, args...)
+center_operation(f, grid, args...) = KernelFunctionOperation{Center, Center, Center}(f, grid, args...)
+
+# x, y and z components of a face flux, at (Face, Center, Center), (Center, Face, Center) and (Center, Center, Face)
+face_operations(f_x, f_y, f_z, grid, args...) = (x = KernelFunctionOperation{Face, Center, Center}(f_x, grid, args...),
+                                                 y = KernelFunctionOperation{Center, Face, Center}(f_y, grid, args...),
+                                                 z = KernelFunctionOperation{Center, Center, Face}(f_z, grid, args...))
+
 """
     thermodynamic_diagnostics(model)
 
@@ -15,30 +23,27 @@ Wrap them in `Field` to compute them, e.g. `Field(thermodynamic_diagnostics(mode
 """
 function thermodynamic_diagnostics(model)
     grid, C, clock = model.grid, merge(model.velocities, model.tracers), model.clock
-    tb = model.buoyancy.formulation
-    cl = only(filter(c -> c isa ThermodynamicDiffusivity, model.closure))
-    p = (; viscous_closure = model.closure, closure_fields = model.closure_fields, diffusivity = cl, buoyancy = tb)
+    buoyancy_formulation = model.buoyancy.formulation
+    diffusivity = only(filter(Base.Fix2(isa, ThermodynamicDiffusivity), model.closure))
+    parameters = (; viscous_closure = model.closure, closure_fields = model.closure_fields, diffusivity, buoyancy = buoyancy_formulation)
 
-    centre(f, args...) = KernelFunctionOperation{Center, Center, Center}(f, grid, args...)
-    faces(fx, fy, fz) = (x = KernelFunctionOperation{Face, Center, Center}(fx, grid, cl, tb, C),
-                         y = KernelFunctionOperation{Center, Face, Center}(fy, grid, cl, tb, C),
-                         z = KernelFunctionOperation{Center, Center, Face}(fz, grid, cl, tb, C))
-
-    return (Σ          = centre(thermodynamic_functionᶜᶜᶜ, static_energy, tb, C),
-            T          = centre(thermodynamic_functionᶜᶜᶜ, temperature, tb, C),
-            π          = centre(thermodynamic_functionᶜᶜᶜ, exner, tb, C),
-            Σ_S        = centre(thermodynamic_functionᶜᶜᶜ, chemical_potential_analogue, tb, C),
-            μ          = centre(thermodynamic_functionᶜᶜᶜ, chemical_potential, tb, C),
-            ε          = centre(dissipationᶜᶜᶜ, clock, C, p),
-            σ_θ        = centre(θ_productionᶜᶜᶜ, clock, C, p),
-            σ_b        = centre(buoyancy_productionᶜᶜᶜ, clock, C, p),
-            σ_b_nonlin = centre(nonlinear_buoyancy_productionᶜᶜᶜ, clock, C, p),
-            σ_η        = centre(entropy_productionᶜᶜᶜ, clock, C, p),
-            conversion = centre(static_energy_conversionᶜᶜᶜ, clock, C, p),
-            j_θ        = faces(masked_heat_flux_x, masked_heat_flux_y, masked_heat_flux_z),
-            j_S        = faces(masked_salt_flux_x, masked_salt_flux_y, masked_salt_flux_z),
-            j_b        = faces(buoyancy_flux_x, buoyancy_flux_y, buoyancy_flux_z),
-            wb         = KernelFunctionOperation{Center, Center, Face}(buoyancy_workᶜᶜᶠ, grid, tb, C))
+    return (Σ          = center_operation(thermodynamic_functionᶜᶜᶜ, grid, static_energy, buoyancy_formulation, C),
+            T          = center_operation(thermodynamic_functionᶜᶜᶜ, grid, temperature, buoyancy_formulation, C),
+            π          = center_operation(thermodynamic_functionᶜᶜᶜ, grid, exner, buoyancy_formulation, C),
+            Σ_S        = center_operation(thermodynamic_functionᶜᶜᶜ, grid, chemical_potential_analogue, buoyancy_formulation, C),
+            μ          = center_operation(thermodynamic_functionᶜᶜᶜ, grid, chemical_potential, buoyancy_formulation, C),
+            ε          = center_operation(dissipationᶜᶜᶜ, grid, clock, C, parameters),
+            σ_θ        = center_operation(θ_productionᶜᶜᶜ, grid, clock, C, parameters),
+            σ_b        = center_operation(buoyancy_productionᶜᶜᶜ, grid, clock, C, parameters),
+            σ_b_nonlin = center_operation(nonlinear_buoyancy_productionᶜᶜᶜ, grid, clock, C, parameters),
+            σ_η        = center_operation(entropy_productionᶜᶜᶜ, grid, clock, C, parameters),
+            conversion = center_operation(static_energy_conversionᶜᶜᶜ, grid, clock, C, parameters),
+            j_θ        = face_operations(masked_heat_flux_x, masked_heat_flux_y, masked_heat_flux_z, grid, diffusivity, buoyancy_formulation, C),
+            j_S        = face_operations(masked_salt_flux_x, masked_salt_flux_y, masked_salt_flux_z, grid, diffusivity, buoyancy_formulation, C),
+            j_b        = face_operations(buoyancy_flux_x, buoyancy_flux_y, buoyancy_flux_z, grid, diffusivity, buoyancy_formulation, C),
+            wb         = KernelFunctionOperation{Center, Center, Face}(buoyancy_workᶜᶜᶠ, grid, buoyancy_formulation, C))
 end
 
-@inline buoyancy_workᶜᶜᶠ(i, j, k, grid, tb, C) = @inbounds C.w[i, j, k] * consistent_buoyancyᶜᶜᶠ(i, j, k, grid, tb, C)
+# w b̃ at (Center, Center, Face)
+@inline buoyancy_workᶜᶜᶠ(i, j, k, grid, buoyancy_formulation, C) =
+    @inbounds C.w[i, j, k] * consistent_buoyancyᶜᶜᶠ(i, j, k, grid, buoyancy_formulation, C)

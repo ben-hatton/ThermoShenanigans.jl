@@ -33,9 +33,9 @@ using Oceananigans.BuoyancyFormulations: ∂z_b
 
     @testset "Constant salinity" begin
         model = component_model(grid, cabbeling; tracers = :θ, constant_salinity = 0.035)
-        tb = model.buoyancy.formulation
-        @test ThermoShenanigans.required_tracers(tb) == (:θ,)
-        @test sprint(show, tb) == "ThermodynamicBuoyancy with CabbelingBoussinesqThermodynamics{Float64} and surface_height=0.0, constant_salinity=0.035"
+        buoyancy_formulation = model.buoyancy.formulation
+        @test ThermoShenanigans.required_tracers(buoyancy_formulation) == (:θ,)
+        @test sprint(show, buoyancy_formulation) == "ThermodynamicBuoyancy with CabbelingBoussinesqThermodynamics{Float64} and surface_height=0.0, constant_salinity=0.035"
 
         set!(model, θ = (x, y, z) -> 283 + 2 * (1 + z / 100))
         θ = model.tracers.θ

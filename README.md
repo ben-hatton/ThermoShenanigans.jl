@@ -28,7 +28,7 @@ using ThermoShenanigans
 
 grid = RectilinearGrid(size = (64, 64), x = (0, 0.1), z = (-0.1, 0), topology = (Periodic, Flat, Bounded))
 
-thermo = CabbelingBoussinesqThermodynamics(
+thermodynamics = CabbelingBoussinesqThermodynamics(
    thermal_expansion = 2e-4,
    haline_contraction = 0.8,
    cabbeling_coefficient = 1e-5,
@@ -37,7 +37,7 @@ thermo = CabbelingBoussinesqThermodynamics(
    reference_heat_capacity = 3991.87
    )
 
-components = thermodynamic_model_components(grid, thermo;
+components = thermodynamic_model_components(grid, thermodynamics;
    viscosity = 1e-6,
    thermal_diffusivity = 1.4e-7,
    salt_diffusivity = 1e-9
@@ -89,7 +89,7 @@ $$
 \Sigma(\theta, S, z) = h^0(\theta, S) - b(\theta, S)  z ,
 $$
 
-where $z$ is the height relative to the surface. Its derivatives give the thermodynamic conjugate variables
+where $z$ is the height relative to the reference level. Its derivatives give the thermodynamic conjugate variables
 relative to $(\theta, S, z)$:
 
 | Derivative | Expression | Name |
@@ -149,7 +149,7 @@ $$
 where $\kappa_S$ and $\kappa_T$ are the molecular diffusivities. From this, the flux of $\theta$ is given by
 
 $$
-\mathbf{j}_\theta = \frac{1}{\pi}\mathbf{j}_H - \frac{T_s}{T_\theta} \mathbf{j}_S.
+\mathbf{j}_\theta = \frac{1}{\pi}\mathbf{j}_H - \frac{T_S}{T_\theta} \mathbf{j}_S.
 $$
 
 
@@ -200,18 +200,19 @@ $$
 \begin{aligned}
 b &= g \left[ \alpha (\theta - \theta_r) + \tfrac{1}{2} \gamma (\theta - \theta_r)^2 - \beta (S - S_r) \right] , \\
 h^0 &= c_p^0  \theta , \\
-\eta^0 &= c_p^0 \ln(\theta / \theta_r) - R_\eta  S (\ln S - 1) .
+\eta^0 &= c_p^0 \ln(\theta / \theta_r) - R_S  S (\ln S - 1) .
 \end{aligned}
 $$
 
-The default $R_\eta = R / M_S \approx 264.76\ \mathrm{J kg^{-1} K^{-1}}$
+The default $R_S = R / M_S \approx 264.76\ \mathrm{J kg^{-1} K^{-1}}$
 is the ideal entropy of mixing of sea salt, with $M_S = 31.4038218\ \mathrm{g mol^{-1}}$ (Millero et al. 2008).
-For this thermodynamics, $T = \pi \theta / c_p^0$ and $\Gamma = -g \beta S / (R_\eta T)$.
+It assumes a specific heat capacity independent of temperature and salinity, and that the fluid is an ideal solution.
+For this thermodynamics, $T = \pi \theta / c_p^0$ and $\Gamma = -g \beta S / (R_S T)$.
 
 ### Your own thermodynamics
 
 Subtype `AbstractBoussinesqThermodynamics` and add methods for $b$, $h^0$, $\eta^0$ and their first and second
-derivatives (18 functions in all):
+derivatives (18 functions in all), each called as `f(θ, S, thermodynamics)`:
 
 ```julia
 using ThermoShenanigans
@@ -223,8 +224,8 @@ struct MyThermodynamics{FT} <: AbstractBoussinesqThermodynamics
     # parameters...
 end
 
-@inline buoyancy(θ, S, t::MyThermodynamics) = ...
-@inline ∂b∂θ(θ, S, t::MyThermodynamics)     = ...
+@inline buoyancy(θ, S, thermodynamics::MyThermodynamics) = ...
+@inline ∂b∂θ(θ, S, thermodynamics::MyThermodynamics)     = ...
 # ... and so on for all 18 functions
 ```
 

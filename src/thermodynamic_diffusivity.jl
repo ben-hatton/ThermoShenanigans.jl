@@ -1,6 +1,16 @@
+"""
+    ThermodynamicDiffusivity
+
+Closure for the thermodynamically consistent heat and salt fluxes. Fields:
+
+* `thermal_diffusivity`: κ_T
+* `salt_diffusivity`: κ_S
+
+The type parameter `N` holds the tracer names, set by `with_tracers`.
+"""
 struct ThermodynamicDiffusivity{FT, N} <: AbstractTurbulenceClosure{ExplicitTimeDiscretization, 1}
-    thermal_diffusivity :: FT # κ_T
-    salt_diffusivity :: FT    # κ_S
+    thermal_diffusivity :: FT
+    salt_diffusivity :: FT
 end
 
 """
@@ -24,27 +34,27 @@ ThermodynamicDiffusivity(FT = Oceananigans.defaults.FloatType; thermal_diffusivi
     ThermodynamicDiffusivity{FT, nothing}(convert(FT, thermal_diffusivity), convert(FT, salt_diffusivity))
 
 # Record the tracer names, so that the tracer index `id` identifies θ and S at compile time
-with_tracers(tracers, cl::ThermodynamicDiffusivity{FT}) where FT = ThermodynamicDiffusivity{FT, tracers}(cl.thermal_diffusivity, cl.salt_diffusivity)
+with_tracers(tracers, closure::ThermodynamicDiffusivity{FT}) where FT =
+    ThermodynamicDiffusivity{FT, tracers}(closure.thermal_diffusivity, closure.salt_diffusivity)
 
 @inline tracer_name(::ThermodynamicDiffusivity{FT, N}, ::Val{id}) where {FT, N, id} = Val(N[id])
 
 # Δ² / max(κ_T, κ_S) for `TimeStepWizard(; diffusive_cfl)` and `DiffusiveCFL`; since T = π / η⁰_θ, j_θ diffuses θ with exactly κ_T
-cell_diffusion_timescale(cl::ThermodynamicDiffusivity, closure_fields, grid, clock, fields) =
-    min_Δxyz(grid, ThreeDimensionalFormulation())^2 / max(cl.thermal_diffusivity, cl.salt_diffusivity)
+cell_diffusion_timescale(closure::ThermodynamicDiffusivity, closure_fields, grid, clock, fields) =
+    min_Δxyz(grid, ThreeDimensionalFormulation())^2 / max(closure.thermal_diffusivity, closure.salt_diffusivity)
 
-#####
-##### Fluxes at faces, from differences and interpolations of cell-centre thermodynamic variables
-#####
+# Fluxes at faces, from differences and interpolations of cell-centre thermodynamic variables
 
-@inline barodiffusion_coefficient(θ, S, z, t)  = isothermal_∂b∂S(θ, S, z, t) / isothermal_∂μ∂S(θ, S, z, t) # Γ
-@inline heat_flux_prefactor(θ, S, z, t)        = heat_capacity(θ, S, z, t) / exner(θ, S, z, t)            # cₚ / π
-@inline heat_flux_salt_coefficient(θ, S, z, t) = - ∂T∂S(θ, S, z, t) / ∂T∂θ(θ, S, z, t)                    # - T_S / T_θ
+@inline barodiffusion_coefficient(θ, S, z, thermodynamics)  = isothermal_∂b∂S(θ, S, z, thermodynamics) / isothermal_∂μ∂S(θ, S, z, thermodynamics) # Γ
+@inline heat_flux_prefactor(θ, S, z, thermodynamics)        = heat_capacity(θ, S, z, thermodynamics) / exner(θ, S, z, thermodynamics)            # cₚ / π
+@inline heat_flux_salt_coefficient(θ, S, z, thermodynamics) = - ∂T∂S(θ, S, z, thermodynamics) / ∂T∂θ(θ, S, z, thermodynamics)                    # - T_S / T_θ
 
 # ∇S - Γ 𝐤, the (scaled) isothermal salt force: ∇μ|_T = (∂μ/∂S)_T (∇S - Γ 𝐤)
-@inline salt_gradient_x(i, j, k, grid, tb, C) = ∂xᶠᶜᶜ(i, j, k, grid, C.S)
-@inline salt_gradient_y(i, j, k, grid, tb, C) = ∂yᶜᶠᶜ(i, j, k, grid, C.S)
-@inline salt_gradient_z(i, j, k, grid, tb, C) = ∂zᶜᶜᶠ(i, j, k, grid, C.S) -
-                                                ℑzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, barodiffusion_coefficient, tb, C)
+@inline salt_gradient_x(i, j, k, grid, buoyancy_formulation, C) = ∂xᶠᶜᶜ(i, j, k, grid, C.S)
+@inline salt_gradient_y(i, j, k, grid, buoyancy_formulation, C) = ∂yᶜᶠᶜ(i, j, k, grid, C.S)
+@inline salt_gradient_z(i, j, k, grid, buoyancy_formulation, C) =
+    ∂zᶜᶜᶠ(i, j, k, grid, C.S) -
+    ℑzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, barodiffusion_coefficient, buoyancy_formulation, C)
 
 for (dir, ∂, ℑ, wall_mask) in ((:x, ∂xᶠᶜᶜ, ℑxᶠᵃᵃ, biharmonic_mask_x),
                                (:y, ∂yᶜᶠᶜ, ℑyᵃᶠᵃ, biharmonic_mask_y),
@@ -58,26 +68,33 @@ for (dir, ∂, ℑ, wall_mask) in ((:x, ∂xᶠᶜᶜ, ℑxᶠᵃᵃ, biharmonic
     diffusive_flux   = Symbol(:diffusive_flux_, dir)
 
     @eval begin
-        @inline $salt_gradient(i, j, k, grid, tb::ConstantSalinityThermodynamicBuoyancy, C) = zero(grid)
+        @inline $salt_gradient(i, j, k, grid, buoyancy_formulation::ConstantSalinityThermodynamicBuoyancy, C) = zero(grid)
 
         # j_S = - κ_S (∇S - Γ 𝐤)
-        @inline $salt_flux(i, j, k, grid, cl, tb, C) = - cl.salt_diffusivity * $salt_gradient(i, j, k, grid, tb, C)
+        @inline $salt_flux(i, j, k, grid, closure, buoyancy_formulation, C) =
+            - closure.salt_diffusivity * $salt_gradient(i, j, k, grid, buoyancy_formulation, C)
 
         # j_θ = - κ_T ℑ(cₚ / π) ∂T + ℑ(- T_S / T_θ) j_S
-        @inline $heat_flux(i, j, k, grid, cl, tb, C) =
-            - cl.thermal_diffusivity * $ℑ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, heat_flux_prefactor, tb, C) *
-                                       $∂(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, temperature, tb, C) +
-            $ℑ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, heat_flux_salt_coefficient, tb, C) * $salt_flux(i, j, k, grid, cl, tb, C)
+        @inline $heat_flux(i, j, k, grid, closure, buoyancy_formulation, C) =
+            - closure.thermal_diffusivity *
+              $ℑ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, heat_flux_prefactor, buoyancy_formulation, C) *
+              $∂(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, temperature, buoyancy_formulation, C) +
+            $ℑ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, heat_flux_salt_coefficient, buoyancy_formulation, C) *
+            $salt_flux(i, j, k, grid, closure, buoyancy_formulation, C)
 
         # Zero at walls, where Oceananigans adds the boundary-condition flux instead (as for biharmonic closures)
-        @inline $masked_salt_flux(i, j, k, grid, cl, tb, C) = $wall_mask(i, j, k, grid, $salt_flux, cl, tb, C)
-        @inline $masked_heat_flux(i, j, k, grid, cl, tb, C) = $wall_mask(i, j, k, grid, $heat_flux, cl, tb, C)
+        @inline $masked_salt_flux(i, j, k, grid, closure, buoyancy_formulation, C) =
+            $wall_mask(i, j, k, grid, $salt_flux, closure, buoyancy_formulation, C)
+        @inline $masked_heat_flux(i, j, k, grid, closure, buoyancy_formulation, C) =
+            $wall_mask(i, j, k, grid, $heat_flux, closure, buoyancy_formulation, C)
 
-        @inline $tracer_flux(i, j, k, grid, ::Val{:θ}, cl, tb, C) = $masked_heat_flux(i, j, k, grid, cl, tb, C)
-        @inline $tracer_flux(i, j, k, grid, ::Val{:S}, cl, tb, C) = $masked_salt_flux(i, j, k, grid, cl, tb, C)
-        @inline $tracer_flux(i, j, k, grid, ::Val,     cl, tb, C) = zero(grid)
+        # Flux of the tracer with the given name; zero for tracers other than θ and S
+        @inline $tracer_flux(i, j, k, grid, ::Val{:θ}, closure, buoyancy_formulation, C) = $masked_heat_flux(i, j, k, grid, closure, buoyancy_formulation, C)
+        @inline $tracer_flux(i, j, k, grid, ::Val{:S}, closure, buoyancy_formulation, C) = $masked_salt_flux(i, j, k, grid, closure, buoyancy_formulation, C)
+        @inline $tracer_flux(i, j, k, grid, ::Val,     closure, buoyancy_formulation, C) = zero(grid)
 
-        @inline $diffusive_flux(i, j, k, grid, cl::ThermodynamicDiffusivity, K, id, c, clock, fields, b) =
-            $tracer_flux(i, j, k, grid, tracer_name(cl, id), cl, b.formulation, fields)
+        # The Oceananigans interface: the tracer index `id` selects θ or S through the closure's tracer names
+        @inline $diffusive_flux(i, j, k, grid, closure::ThermodynamicDiffusivity, K, id, c, clock, fields, b) =
+            $tracer_flux(i, j, k, grid, tracer_name(closure, id), closure, b.formulation, fields)
     end
 end
