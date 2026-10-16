@@ -7,9 +7,9 @@ function set_smooth_state!(model)
     return nothing
 end
 
-function stepped_model(arch, FT = Float64; kw...)
+function stepped_model(arch, FT = Float64; model_kwargs...)
     grid = RectilinearGrid(arch, FT, size = (4, 4, 4), extent = (1, 1, 1), topology = (Bounded, Bounded, Bounded))
-    model = component_model(grid, CabbelingBoussinesqThermodynamics(FT; cabbeling_coefficient = 1e-5, parameters...); kw...)
+    model = component_model(grid, CabbelingBoussinesqThermodynamics(FT; cabbeling_coefficient = 1e-5, parameters...); model_kwargs...)
     set_smooth_state!(model)
     time_step!(model, 1e-3)
     return model

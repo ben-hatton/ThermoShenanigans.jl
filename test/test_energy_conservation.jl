@@ -39,22 +39,22 @@ end
              ("constant salinity",       cabbeling, grid,           (; tracers = :θ, constant_salinity = 0.035)),
              ("cabbeling, stretched Δz", cabbeling, stretched_grid, (; momentum_advection = nothing)))
 
-    @testset "Consistent buoyancy b̃ [$label]" for (label, t, model_grid, kw) in cases[[1, 2, 3, 5]]
-        model = component_model(model_grid, t; kw...)
+    @testset "Consistent buoyancy b̃ [$label]" for (label, thermodynamics, model_grid, model_kwargs) in cases[[1, 2, 3, 5]]
+        model = component_model(model_grid, thermodynamics; model_kwargs...)
         set_random_state!(model)
-        C, tb = merge(model.velocities, model.tracers), model.buoyancy.formulation
+        C, buoyancy_formulation = merge(model.velocities, model.tracers), model.buoyancy.formulation
         θ, S = model.tracers
-        ℑb(i, j, k) = (buoyancy(θ[i, j, k], S[i, j, k], t) + buoyancy(θ[i, j, k-1], S[i, j, k-1], t)) / 2
-        gγ = t isa CabbelingBoussinesqThermodynamics ? t.gravitational_acceleration * t.cabbeling_coefficient : 0.0
+        ℑb(i, j, k) = (buoyancy(θ[i, j, k], S[i, j, k], thermodynamics) + buoyancy(θ[i, j, k-1], S[i, j, k-1], thermodynamics)) / 2
+        gγ = thermodynamics isa CabbelingBoussinesqThermodynamics ? thermodynamics.gravitational_acceleration * thermodynamics.cabbeling_coefficient : 0.0
 
         for i in 1:6, j in 1:6, k in 2:6
-            @test consistent_buoyancyᶜᶜᶠ(i, j, k, model_grid, tb, C) ≈ ℑb(i, j, k) - gγ * (θ[i, j, k] - θ[i, j, k-1])^2 / 4 atol = 1e-14
-            @test z_dot_g_bᶜᶜᶠ(i, j, k, model_grid, model.buoyancy, C) == consistent_buoyancyᶜᶜᶠ(i, j, k, model_grid, tb, C)
+            @test consistent_buoyancyᶜᶜᶠ(i, j, k, model_grid, buoyancy_formulation, C) ≈ ℑb(i, j, k) - gγ * (θ[i, j, k] - θ[i, j, k-1])^2 / 4 atol = 1e-14
+            @test z_dot_g_bᶜᶜᶠ(i, j, k, model_grid, model.buoyancy, C) == consistent_buoyancyᶜᶜᶠ(i, j, k, model_grid, buoyancy_formulation, C)
         end
     end
 
-    @testset "Semi-discrete energy identity [$label]" for (label, t, model_grid, kw) in cases
-        model = component_model(model_grid, t; kw...)
+    @testset "Semi-discrete energy identity [$label]" for (label, thermodynamics, model_grid, model_kwargs) in cases
+        model = component_model(model_grid, thermodynamics; model_kwargs...)
         set_random_state!(model; S = haskey(model.tracers, :S))
         dEdt, round_off, conversions = energy_tendency(model)
         @info "dE/dt = $dEdt for conversions of $conversions [$label]"

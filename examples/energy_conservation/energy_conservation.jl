@@ -23,9 +23,9 @@ using CairoMakie
 #
 # The quadratic term ½ γ θ′² (≈ 1.3 × 10⁻³ for θ′ = 5 K) exceeds the linear term α θ′ (10⁻³).
 
-thermo = CabbelingBoussinesqThermodynamics(thermal_expansion = 2e-4, haline_contraction = 0.8, cabbeling_coefficient = 1e-4,
-                                           reference_temperature = 283.15, reference_salinity = 0.035,
-                                           reference_heat_capacity = 3991.86795711963)
+thermodynamics = CabbelingBoussinesqThermodynamics(thermal_expansion = 2e-4, haline_contraction = 0.8, cabbeling_coefficient = 1e-4,
+                                                   reference_temperature = 283.15, reference_salinity = 0.035,
+                                                   reference_heat_capacity = 3991.86795711963)
 
 # ## Grid and initial conditions
 
@@ -50,10 +50,10 @@ Sᵢ(x, z) = 0.035 + 1e-3 * layer(x, z)
 
 output_dir = joinpath(@__DIR__, "output")
 
-function run_energy_budget(Δt; stop_time = 60, save_fields = false)
-    components = thermodynamic_model_components(grid, thermo; viscosity = 2e-5, thermal_diffusivity = 2e-5, salt_diffusivity = 2e-5)
+function run_energy_budget(grid, thermodynamics, initial_conditions, output_dir, Δt; stop_time = 60, save_fields = false)
+    components = thermodynamic_model_components(grid, thermodynamics; viscosity = 2e-5, thermal_diffusivity = 2e-5, salt_diffusivity = 2e-5)
     model = NonhydrostaticModel(grid; tracers = (:θ, :S), components...)
-    set!(model, θ = θᵢ, S = Sᵢ)
+    set!(model; initial_conditions...)
 
     u, v, w = model.velocities
     diagnostics = thermodynamic_diagnostics(model)
@@ -90,7 +90,8 @@ function run_energy_budget(Δt; stop_time = 60, save_fields = false)
 end
 
 Δts = (0.04, 0.02)
-filenames = [run_energy_budget(Δt; save_fields = Δt == first(Δts)) for Δt in Δts]
+initial_conditions = (θ = θᵢ, S = Sᵢ)
+filenames = [run_energy_budget(grid, thermodynamics, initial_conditions, output_dir, Δt; save_fields = Δt == first(Δts)) for Δt in Δts]
 nothing #hide
 
 # ## The energy budget

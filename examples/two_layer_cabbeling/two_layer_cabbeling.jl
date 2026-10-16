@@ -36,14 +36,14 @@ g, β, γ = 9.80665, 0.78, 1e-5
 Δθ, ΔS = θ_shallow - θ_deep, S_shallow - S_deep
 α = (Δb / g - γ * Δθ^2 / 2 + β * ΔS) / Δθ
 
-thermo = CabbelingBoussinesqThermodynamics(thermal_expansion = α, haline_contraction = β, cabbeling_coefficient = γ,
-                                           reference_temperature = θ_deep, reference_salinity = S_deep,
-                                           reference_heat_capacity = 3991.86795711963, gravitational_acceleration = g)
+thermodynamics = CabbelingBoussinesqThermodynamics(thermal_expansion = α, haline_contraction = β, cabbeling_coefficient = γ,
+                                                   reference_temperature = θ_deep, reference_salinity = S_deep,
+                                                   reference_heat_capacity = 3991.86795711963, gravitational_acceleration = g)
 
 # The shallow layer is lighter than the deep layer, but an even mixture of the two is denser:
 
-b_shallow = buoyancy(θ_shallow, S_shallow, thermo)
-b_mixture = buoyancy((θ_shallow + θ_deep) / 2, (S_shallow + S_deep) / 2, thermo)
+b_shallow = buoyancy(θ_shallow, S_shallow, thermodynamics)
+b_mixture = buoyancy((θ_shallow + θ_deep) / 2, (S_shallow + S_deep) / 2, thermodynamics)
 @printf("b(shallow) - b(deep) = %.2e m s⁻², b(mixture) - b(deep) = %.2e m s⁻²\n", b_shallow, b_mixture)
 
 # ## Model
@@ -53,7 +53,7 @@ b_mixture = buoyancy((θ_shallow + θ_deep) / 2, (S_shallow + S_deep) / 2, therm
 
 grid = RectilinearGrid(size = (32, 256), x = (-0.035, 0.035), z = (-1, 0), topology = (Periodic, Flat, Bounded))
 
-components = thermodynamic_model_components(grid, thermo; viscosity = 1e-6, thermal_diffusivity = 1e-7, salt_diffusivity = 1e-7)
+components = thermodynamic_model_components(grid, thermodynamics; viscosity = 1e-6, thermal_diffusivity = 1e-7, salt_diffusivity = 1e-7)
 model = NonhydrostaticModel(grid; tracers = (:θ, :S), components...)
 
 # The interface at z = -0.5 m is seeded with small-amplitude salinity noise.

@@ -1,25 +1,25 @@
 using Oceananigans.TimeSteppers: update_state!, compute_tendencies!, compute_flux_bc_tendencies!
 
 @testset "ThermodynamicDiffusivity" begin
-    @testset "Isothermal derivatives [$(summary(t))]" for t in (cabbeling, coupled)
+    @testset "Isothermal derivatives [$(summary(thermodynamics))]" for thermodynamics in (cabbeling, coupled)
         for (θ, S, z) in states
-            T₀ = temperature(θ, S, z, t)
-            @test - ∂T∂S(θ, S, z, t) / ∂T∂θ(θ, S, z, t) ≈ derivative(S -> isothermal_θ(T₀, S, z, t; θ), S) atol=1e-12
-            @test isothermal_∂b∂S(θ, S, z, t) ≈ derivative(S -> buoyancy(isothermal_θ(T₀, S, z, t; θ), S, t), S)
-            @test isothermal_∂μ∂S(θ, S, z, t) ≈ derivative(S -> chemical_potential(isothermal_θ(T₀, S, z, t; θ), S, z, t), S)
+            T₀ = temperature(θ, S, z, thermodynamics)
+            @test - ∂T∂S(θ, S, z, thermodynamics) / ∂T∂θ(θ, S, z, thermodynamics) ≈ derivative(S -> isothermal_θ(T₀, S, z, thermodynamics; θ), S) atol=1e-12
+            @test isothermal_∂b∂S(θ, S, z, thermodynamics) ≈ derivative(S -> buoyancy(isothermal_θ(T₀, S, z, thermodynamics; θ), S, thermodynamics), S)
+            @test isothermal_∂μ∂S(θ, S, z, thermodynamics) ≈ derivative(S -> chemical_potential(isothermal_θ(T₀, S, z, thermodynamics; θ), S, z, thermodynamics), S)
             # Maxwell relation (∂μ/∂z)_T = - (∂b/∂S)_T
-            @test derivative(z -> chemical_potential(isothermal_θ(T₀, S, z, t; θ), S, z, t), z) ≈ - isothermal_∂b∂S(θ, S, z, t)
+            @test derivative(z -> chemical_potential(isothermal_θ(T₀, S, z, thermodynamics; θ), S, z, thermodynamics), z) ≈ - isothermal_∂b∂S(θ, S, z, thermodynamics)
         end
 
-        R_η, g, β = cabbeling.saline_entropy_constant, cabbeling.gravitational_acceleration, cabbeling.haline_contraction
+        R_S, g, β = cabbeling.saline_entropy_constant, cabbeling.gravitational_acceleration, cabbeling.haline_contraction
         θ, S, z = states[2]
         T = temperature(θ, S, z, cabbeling)
-        @test barodiffusion_coefficient(θ, S, z, cabbeling) ≈ - g * β * S / (R_η * T)
+        @test barodiffusion_coefficient(θ, S, z, cabbeling) ≈ - g * β * S / (R_S * T)
     end
 
-    @testset "Resting equilibrium has zero fluxes [γ = $(t.cabbeling_coefficient)]" for t in (linear, cabbeling)
-        model = component_model(test_grid(size = (1, 1, 16), extent = (1, 1, 1000)), t)
-        S, Γ₁, Δz = set_resting_equilibrium!(model, t)
+    @testset "Resting equilibrium has zero fluxes [γ = $(thermodynamics.cabbeling_coefficient)]" for thermodynamics in (linear, cabbeling)
+        model = component_model(test_grid(size = (1, 1, 16), extent = (1, 1, 1000)), thermodynamics)
+        S, Γ₁, Δz = set_resting_equilibrium!(model, thermodynamics)
 
         heat_scale = 1e-3 * 1 / Δz        # κ_T × 1 K / Δz
         salt_scale = 1e-4 * abs(Γ₁)       # κ_S × Γ

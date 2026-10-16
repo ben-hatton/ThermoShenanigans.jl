@@ -34,9 +34,9 @@ g, β, γ = 9.80665, 0.78, 1e-5
 Δθ, ΔS = θ_shallow - θ_deep, S_shallow - S_deep
 α = (Δb / g - γ * Δθ^2 / 2 + β * ΔS) / Δθ
 
-thermo = CabbelingBoussinesqThermodynamics(thermal_expansion = α, haline_contraction = β, cabbeling_coefficient = γ,
-                                           reference_temperature = θ_deep, reference_salinity = S_deep,
-                                           reference_heat_capacity = 3991.86795711963, gravitational_acceleration = g)
+thermodynamics = CabbelingBoussinesqThermodynamics(thermal_expansion = α, haline_contraction = β, cabbeling_coefficient = γ,
+                                                   reference_temperature = θ_deep, reference_salinity = S_deep,
+                                                   reference_heat_capacity = 3991.86795711963, gravitational_acceleration = g)
 
 # ## Model
 
@@ -45,7 +45,7 @@ Nx, Nz = 64, 512
 grid = RectilinearGrid(GPU(); size = (Nx, Nx, Nz), x = (-0.035, 0.035), y = (-0.035, 0.035), z = (-1, 0),
                        topology = (Periodic, Periodic, Bounded))
 
-components = thermodynamic_model_components(grid, thermo; viscosity = 1e-6, thermal_diffusivity = 1e-7, salt_diffusivity = 1e-7)
+components = thermodynamic_model_components(grid, thermodynamics; viscosity = 1e-6, thermal_diffusivity = 1e-7, salt_diffusivity = 1e-7)
 model = NonhydrostaticModel(grid; tracers = (:θ, :S), components...)
 
 θᵢ(x, y, z) = z > -0.5 ? θ_shallow : θ_deep

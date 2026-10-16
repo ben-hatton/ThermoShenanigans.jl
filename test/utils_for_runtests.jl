@@ -10,9 +10,7 @@ const test_gpu = get(ENV, "TEST_ARCHITECTURE", "CPU") == "GPU"
 test_gpu && @eval using CUDA
 archs = test_gpu ? (CPU(), GPU()) : (CPU(),)
 
-#####
-##### Thermodynamics
-#####
+# Thermodynamics
 
 parameters = (thermal_expansion = 2e-4, haline_contraction = 0.8, reference_temperature = 283,
               reference_salinity = 0.035, reference_heat_capacity = 4000)
@@ -36,50 +34,48 @@ for f in (:∂b∂S, :∂²b∂θ², :∂²b∂θ∂S, :∂²b∂S², :∂²h⁰
     @eval $f(θ, S, ::CoupledTestThermodynamics) = zero(θ)
 end
 
-buoyancy(θ, S, t::CoupledTestThermodynamics)           = t.gα * θ
-∂b∂θ(θ, S, t::CoupledTestThermodynamics)               = t.gα
-potential_enthalpy(θ, S, t::CoupledTestThermodynamics) = t.c * θ + t.a * θ * S
-∂h⁰∂θ(θ, S, t::CoupledTestThermodynamics)              = t.c + t.a * S
-∂h⁰∂S(θ, S, t::CoupledTestThermodynamics)              = t.a * θ
-∂²h⁰∂θ∂S(θ, S, t::CoupledTestThermodynamics)           = t.a
-entropy(θ, S, t::CoupledTestThermodynamics)            = t.c * log(θ) - S * (log(S) - 1)
-∂η⁰∂θ(θ, S, t::CoupledTestThermodynamics)              = t.c / θ
-∂η⁰∂S(θ, S, t::CoupledTestThermodynamics)              = - log(S)
-∂²η⁰∂θ²(θ, S, t::CoupledTestThermodynamics)            = - t.c / θ^2
-∂²η⁰∂S²(θ, S, t::CoupledTestThermodynamics)            = - 1 / S
+buoyancy(θ, S, thermodynamics::CoupledTestThermodynamics)           = thermodynamics.gα * θ
+∂b∂θ(θ, S, thermodynamics::CoupledTestThermodynamics)               = thermodynamics.gα
+potential_enthalpy(θ, S, thermodynamics::CoupledTestThermodynamics) = thermodynamics.c * θ + thermodynamics.a * θ * S
+∂h⁰∂θ(θ, S, thermodynamics::CoupledTestThermodynamics)              = thermodynamics.c + thermodynamics.a * S
+∂h⁰∂S(θ, S, thermodynamics::CoupledTestThermodynamics)              = thermodynamics.a * θ
+∂²h⁰∂θ∂S(θ, S, thermodynamics::CoupledTestThermodynamics)           = thermodynamics.a
+entropy(θ, S, thermodynamics::CoupledTestThermodynamics)            = thermodynamics.c * log(θ) - S * (log(S) - 1)
+∂η⁰∂θ(θ, S, thermodynamics::CoupledTestThermodynamics)              = thermodynamics.c / θ
+∂η⁰∂S(θ, S, thermodynamics::CoupledTestThermodynamics)              = - log(S)
+∂²η⁰∂θ²(θ, S, thermodynamics::CoupledTestThermodynamics)            = - thermodynamics.c / θ^2
+∂²η⁰∂S²(θ, S, thermodynamics::CoupledTestThermodynamics)            = - 1 / S
 
 coupled = CoupledTestThermodynamics(4000, 100, 9.81 * 2e-4)
 
 states = [(283.0, 0.035, 0.0), (275.5, 0.034, -50.0), (291.2, 0.0365, -1000.0)] # (θ, S, z)
 
 # θ on the isotherm T(θ, S, z) = T₀ (Newton; differentiable with ForwardDiff)
-function isothermal_θ(T₀, S, z, t; θ = T₀ + zero(S * z))
+function isothermal_θ(T₀, S, z, thermodynamics; θ = T₀ + zero(S * z))
     for _ in 1:30
-        θ -= (temperature(θ, S, z, t) - T₀) / ∂T∂θ(θ, S, z, t)
+        θ -= (temperature(θ, S, z, thermodynamics) - T₀) / ∂T∂θ(θ, S, z, thermodynamics)
     end
     return θ
 end
 
 # θ on the isentrope η⁰(θ, S) = η₀ (Newton; differentiable with ForwardDiff)
-function isentropic_θ(η₀, S, t; θ = 283 + zero(η₀ * S))
+function isentropic_θ(η₀, S, thermodynamics; θ = 283 + zero(η₀ * S))
     for _ in 1:30
-        θ -= (entropy(θ, S, t) - η₀) / ∂η⁰∂θ(θ, S, t)
+        θ -= (entropy(θ, S, thermodynamics) - η₀) / ∂η⁰∂θ(θ, S, thermodynamics)
     end
     return θ
 end
 
-#####
-##### Models
-#####
+# Models
 
 # Tests share one grid type (only size and extent vary) and one model builder, so that models share compiled kernels
 test_grid(; size = (6, 6, 6), extent = (1, 1, 1)) = RectilinearGrid(; size, extent, topology = (Bounded, Bounded, Bounded))
 
 component_model(grid, thermo; tracers = (:θ, :S), momentum_advection = Centered(), boundary_conditions = NamedTuple(),
-                κ_T = 1e-3, kw...) =
+                κ_T = 1e-3, model_kwargs...) =
     NonhydrostaticModel(grid; tracers, momentum_advection, boundary_conditions,
                         thermodynamic_model_components(grid, thermo; viscosity = 1e-3, thermal_diffusivity = κ_T,
-                                                       salt_diffusivity = 1e-4, kw...)...)
+                                                       salt_diffusivity = 1e-4, model_kwargs...)...)
 
 # Prescribed fluxes of θ and S at the top and bottom (positive upwards), and a passive tracer c
 const flux_bc_values = (θ = (top = 1e-4, bottom = -2e-4), S = (top = -3e-6, bottom = 1e-6))
@@ -97,17 +93,17 @@ function set_random_state!(model; S = true)
 end
 
 # Uniform T₀ on a single column, with S marched upwards so that δS / Δz = ℑΓ on every interior face
-function set_resting_equilibrium!(model, t; T₀ = 283.0, S_bottom = 0.035)
+function set_resting_equilibrium!(model, thermodynamics; T₀ = 283.0, S_bottom = 0.035)
     grid = model.grid
     z, Nz, Δz = znodes(grid, Center()), size(grid, 3), zspacings(grid, Center())[1]
     S, θ = zeros(Nz), zeros(Nz)
     S[1] = S_bottom
-    θ[1] = isothermal_θ(T₀, S[1], z[1], t)
-    Γ(k) = barodiffusion_coefficient(θ[k], S[k], z[k], t)
+    θ[1] = isothermal_θ(T₀, S[1], z[1], thermodynamics)
+    Γ(k) = barodiffusion_coefficient(θ[k], S[k], z[k], thermodynamics)
     for k in 2:Nz
         S[k], θ[k] = S[k-1], θ[k-1]
         for _ in 1:50
-            θ[k] = isothermal_θ(T₀, S[k], z[k], t)
+            θ[k] = isothermal_θ(T₀, S[k], z[k], thermodynamics)
             S[k] = S[k-1] + Δz * (Γ(k-1) + Γ(k)) / 2
         end
     end
@@ -115,9 +111,7 @@ function set_resting_equilibrium!(model, t; T₀ = 283.0, S_bottom = 0.035)
     return S, Γ(1), Δz
 end
 
-#####
-##### Discrete integrals and fluxes
-#####
+# Discrete integrals and fluxes
 
 field(op) = compute!(Field(op))
 computed(op) = Array(interior(field(op)))

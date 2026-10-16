@@ -10,9 +10,9 @@ With `consistent = true` the closure is `(ScalarDiffusivity(ν = viscosity), The
 Oceananigans' default `Centered(order = 2)` advection. Wall fluxes of θ and S are set only by `FluxBoundaryCondition`s.
 """
 function thermodynamic_model_components(grid, thermodynamics; viscosity, thermal_diffusivity, salt_diffusivity,
-                                        consistent = true, kw...)
+                                        consistent = true, buoyancy_kwargs...)
     FT = eltype(grid)
-    buoyancy = ThermodynamicBuoyancy(grid, thermodynamics; kw...)
+    buoyancy = ThermodynamicBuoyancy(grid, thermodynamics; buoyancy_kwargs...)
 
     if consistent
         viscous_closure = ScalarDiffusivity(FT; ν = viscosity)
