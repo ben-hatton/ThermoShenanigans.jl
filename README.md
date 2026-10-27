@@ -268,24 +268,6 @@ no flux); `ValueBoundaryCondition` and `GradientBoundaryCondition` are not suppo
 $\pi Q_\theta + \Sigma_S Q_S$ per unit area at the boundary cell, so a heat flux $Q_H$ corresponds to
 $Q_\theta = Q_H / (\rho_0 \pi)$.
 
-**Known Oceananigans bug on stretched vertical grids.** On grids with variable vertical spacing, Oceananigans'
-centred momentum advection (tested with v0.113.4) does not conserve kinetic energy, even with a divergence-free
-velocity. In `src/Advection/centered_advective_fluxes.jl`, the horizontal fluxes of $w$-momentum are, schematically,
-
-```julia
-advective_momentum_flux_Uw = Axᶠᶜᶠ * ℑzᵃᵃᶠ(u) * ℑxᶠᵃᵃ(w)
-advective_momentum_flux_Vw = Ayᶜᶠᶠ * ℑzᵃᵃᶠ(v) * ℑyᵃᶠᵃ(w)
-```
-
-that is, $A_x^{(w)}  \overline{u}^z$ with the face area $A_x^{(w)} = \Delta y  \Delta z^{(w)}$ of the $w$-cell,
-rather than the
-volume flux $\overline{A_x u}^z$ that the docstring of `div_𝐯w` states. The two agree only when neighbouring cells
-have equal thickness. Otherwise the velocity transporting $w$-momentum is not discretely divergence-free over the
-$w$-cells, and the advection term leaks kinetic energy. The $u$ and $v$ equations are unaffected. In a stretched-grid
-test with no buoyancy and no closure, $\int w  G_w  dV \approx 8 \times 10^{-9}$ while $\int u  G_u  dV$ and
-$\int v  G_v  dV$ are at round-off ($10^{-22}$). The energy drift on stretched grids therefore comes from
-Oceananigans, not from ThermoShenanigans; the stretched-grid energy test turns off momentum advection for this reason.
-
 ## Examples
 
 

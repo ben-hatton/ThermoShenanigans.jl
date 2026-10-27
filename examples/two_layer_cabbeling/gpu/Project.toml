@@ -7,4 +7,4 @@ ThermoShenanigans = "99653c00-4022-43ff-afb8-d728451c8cf4"
 ThermoShenanigans = {path = "../../.."}
 
 [compat]
-Oceananigans = "0.113"
+Oceananigans = "0.116"
