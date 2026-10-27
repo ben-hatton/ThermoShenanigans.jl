@@ -63,3 +63,6 @@ ThermoShenanigans.jl is an extension to Oceananigans.jl that implements generic 
 - Follow established patterns in existing code
 - Add tests for new functionality; update exports when adding public API
 - Reference physics equations in comments when implementing dynamics
+- After making a significant change, give the user a commit command with a short message,
+  preceded by the `cd` into the repo root, e.g.
+  `cd path/to/ThermoShenanigans.jl && git commit -am "Short message"`

@@ -38,11 +38,11 @@ import Oceananigans.BuoyancyFormulations: AbstractBuoyancyFormulation, required_
                                           buoyancy_perturbationᶜᶜᶜ, z_dot_g_bᶜᶜᶠ, ∂x_b, ∂y_b, ∂z_b
 
 include("thermodynamics.jl")
-include("thermodynamic_buoyancy.jl")
-include("thermodynamic_diffusivity.jl")
-include("irreversible_production.jl")
-include("thermodynamic_model_components.jl")
-include("thermodynamic_diagnostics.jl")
+include("buoyancy.jl")
+include("diffusivity.jl")
+include("production.jl")
+include("model_components.jl")
+include("diagnostics.jl")
 include("show_thermodynamics.jl")
 
 end # module
