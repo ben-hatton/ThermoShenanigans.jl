@@ -5,6 +5,8 @@ on:
     branches: [main]
     tags: ['*']
   pull_request:
+  schedule:
+    - cron: '0 3 * * 1'  # weekly, to catch upstream breakage
   workflow_dispatch:
 
 # Cancel superseded runs on PR branches, but let every run on main finish
@@ -21,6 +23,9 @@ jobs:
     name: Julia ${{ matrix.version }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      # The quick core set on PRs; the full suite on main, tags, the weekly run and manual runs
+      TEST_GROUP: ${{ github.event_name == 'pull_request' && 'basic' || 'all' }}
     strategy:
       fail-fast: false
       matrix:
