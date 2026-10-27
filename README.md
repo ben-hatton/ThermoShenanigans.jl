@@ -290,9 +290,13 @@ julia --project -e 'using Pkg; Pkg.test(julia_args = ["--check-bounds=auto"])'
 ```
 
 `Pkg.test()` on its own forces `--check-bounds=yes`, which roughly doubles the time spent compiling the model kernels.
-Set `TEST_ARCHITECTURE=GPU` to also run the architecture tests on a GPU.
 
-The tests check every thermodynamic derivative against ForwardDiff, closed forms and Maxwell relations for the
+By default this runs a quick core set: the thermodynamic derivatives, the discrete energy identity and
+$\sigma_\eta \ge 0$ on one model, a time step, doctests and explicit imports. Set `TEST_GROUP=all` to run the full
+suite, and `TEST_ARCHITECTURE=GPU` to also run its architecture tests on a GPU. CI runs the core set on pull requests
+and the full suite on `main` and weekly.
+
+The full suite checks every thermodynamic derivative against ForwardDiff, closed forms and Maxwell relations for the
 built-in thermodynamics, zero fluxes in a resting isothermal column, wall and conservation properties of the
 closure, $\sigma_\eta \ge 0$, the discrete energy identity on uniform and stretched grids, third-order convergence
 of the RK3 energy error, CPU (and, where available, GPU) model steps in Float64 and Float32, doctests and explicit imports.

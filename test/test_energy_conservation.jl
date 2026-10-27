@@ -1,29 +1,6 @@
-using Oceananigans.TimeSteppers: update_state!, compute_tendencies!
 using Oceananigans.BuoyancyFormulations: z_dot_g_bᶜᶜᶠ
 using Oceananigans.Operators: Vᶜᶜᶠ
 using ThermoShenanigans: consistent_buoyancyᶜᶜᶠ
-
-# dE/dt = ∫ uᵢ Gᵢ dV + ∫ (π G_θ + Σ_S G_S) dV from the model's own tendencies, with two scales:
-# the round-off scale ∫ |π G_θ| + |Σ_S G_S| dV (π ≈ cₚ makes this the largest term), and the size of the conversions ∫ |w b̃| + ε dV
-function energy_tendency(model)
-    update_state!(model)
-    compute_tendencies!(model, [])
-    G = model.timestepper.Gⁿ
-    u, v, w = model.velocities
-    d = thermodynamic_diagnostics(model)
-    π, Σ_S, wb, ε = map(field, (d.π, d.Σ_S, d.wb, d.ε))
-
-    kinetic = integral(*, u, G.u) + integral(*, v, G.v) + integral(*, w, G.w)
-    static, round_off = integral(*, π, G.θ), integral((a, b) -> abs(a * b), π, G.θ)
-
-    if haskey(G, :S)
-        static += integral(*, Σ_S, G.S)
-        round_off += integral((a, b) -> abs(a * b), Σ_S, G.S)
-    end
-
-    conversions = integral(abs, wb) + integral(ε)
-    return kinetic + static, round_off, conversions
-end
 
 @testset "Energy conservation" begin
     grid = test_grid()
