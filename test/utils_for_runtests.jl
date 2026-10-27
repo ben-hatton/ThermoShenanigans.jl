@@ -2,8 +2,12 @@ using ForwardDiff: derivative
 using Oceananigans.AbstractOperations: KernelFunctionOperation
 using Oceananigans.Fields: location
 using Oceananigans.Operators: volume
+using Oceananigans.TimeSteppers: update_state!, compute_tendencies!
 using Oceananigans.TurbulenceClosures: ∇_dot_qᶜ, diffusive_flux_x, diffusive_flux_y, diffusive_flux_z
 using ThermoShenanigans: barodiffusion_coefficient
+
+# TEST_GROUP=basic (the default) runs a quick core set; TEST_GROUP=all runs the full suite
+const test_group = get(ENV, "TEST_GROUP", "basic")
 
 # Set TEST_ARCHITECTURE=GPU to also run the architecture tests on a GPU; CUDA is loaded only then
 const test_gpu = get(ENV, "TEST_ARCHITECTURE", "CPU") == "GPU"
@@ -135,3 +139,25 @@ z_flux(m, id) = computed(KernelFunctionOperation{Center, Center, Face}(diffusive
 fluxes(m, id) = (computed(KernelFunctionOperation{Face, Center, Center}(diffusive_flux_x, m.grid, closure_args(m, id)...)),
                  computed(KernelFunctionOperation{Center, Face, Center}(diffusive_flux_y, m.grid, closure_args(m, id)...)),
                  z_flux(m, id))
+
+# dE/dt = ∫ uᵢ Gᵢ dV + ∫ (π G_θ + Σ_S G_S) dV from the model's own tendencies, with two scales:
+# the round-off scale ∫ |π G_θ| + |Σ_S G_S| dV (π ≈ cₚ makes this the largest term), and the size of the conversions ∫ |w b̃| + ε dV
+function energy_tendency(model)
+    update_state!(model)
+    compute_tendencies!(model, [])
+    G = model.timestepper.Gⁿ
+    u, v, w = model.velocities
+    d = thermodynamic_diagnostics(model)
+    π, Σ_S, wb, ε = map(field, (d.π, d.Σ_S, d.wb, d.ε))
+
+    kinetic = integral(*, u, G.u) + integral(*, v, G.v) + integral(*, w, G.w)
+    static, round_off = integral(*, π, G.θ), integral((a, b) -> abs(a * b), π, G.θ)
+
+    if haskey(G, :S)
+        static += integral(*, Σ_S, G.S)
+        round_off += integral((a, b) -> abs(a * b), Σ_S, G.S)
+    end
+
+    conversions = integral(abs, wb) + integral(ε)
+    return kinetic + static, round_off, conversions
+end
