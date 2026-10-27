@@ -66,3 +66,5 @@ ThermoShenanigans.jl is an extension to Oceananigans.jl that implements generic 
 - After making a significant change, give the user a commit command with a short message,
   preceded by the `cd` into the repo root, e.g.
   `cd path/to/ThermoShenanigans.jl && git commit -am "Short message"`
+- Never add co-authorship or AI attribution (e.g. `Co-Authored-By:` trailers, "Generated with Claude Code")
+  to commit messages, pull requests, issues or comments
