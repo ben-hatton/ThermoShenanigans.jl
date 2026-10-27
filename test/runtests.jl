@@ -7,9 +7,9 @@ using ExplicitImports: check_no_implicit_imports, check_no_stale_explicit_import
 include("utils_for_runtests.jl")
 
 include("test_thermodynamics.jl")
-include("test_thermodynamic_buoyancy.jl")
-include("test_thermodynamic_diffusivity.jl")
-include("test_irreversible_production.jl")
+include("test_buoyancy.jl")
+include("test_diffusivity.jl")
+include("test_production.jl")
 include("test_energy_conservation.jl")
 include("test_architectures.jl")
 

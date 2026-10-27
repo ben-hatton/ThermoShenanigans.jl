@@ -30,14 +30,11 @@ end
     stretched_grid = RectilinearGrid(size = (6, 6, 6), x = (0, 1), y = (0, 1), z = [-1, -0.7, -0.45, -0.25, -0.12, -0.04, 0],
                                      topology = (Bounded, Bounded, Bounded))
 
-    # Oceananigans' Centered momentum advection does not conserve kinetic energy when Δz varies (an Oceananigans bug):
-    # the w-momentum fluxes use Axᶠᶜᶠ ℑz(u) and Ayᶜᶠᶠ ℑz(v) instead of the volume fluxes ℑz(Ax u) and ℑz(Ay v).
-    # The stretched case therefore omits momentum advection, and tests only the buoyancy work, closure and σ_θ.
     cases = (("linear",                  linear,    grid,           (;)),
              ("cabbeling",               cabbeling, grid,           (;)),
              ("coupled",                 coupled,   grid,           (;)),
              ("constant salinity",       cabbeling, grid,           (; tracers = :θ, constant_salinity = 0.035)),
-             ("cabbeling, stretched Δz", cabbeling, stretched_grid, (; momentum_advection = nothing)))
+             ("cabbeling, stretched Δz", cabbeling, stretched_grid, (;)))
 
     @testset "Consistent buoyancy b̃ [$label]" for (label, thermodynamics, model_grid, model_kwargs) in cases[[1, 2, 3, 5]]
         model = component_model(model_grid, thermodynamics; model_kwargs...)
