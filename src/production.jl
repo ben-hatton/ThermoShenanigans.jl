@@ -101,10 +101,13 @@ Used directly as the θ forcing.
     (dissipationᶜᶜᶜ(i, j, k, grid, clock, C, parameters) - potential_energy_conversionᶜᶜᶜ(i, j, k, grid, clock, C, parameters)) /
     thermodynamic_functionᶜᶜᶜ(i, j, k, grid, exner, parameters.buoyancy, C)
 
-# σ_b = b_θ σ_θ + σ_b_nonlin, so that Db/Dt = σ_b - ∇·j_b
+# σ_b_heating = b_θ σ_θ, the buoyancy production by the θ source
+@inline heating_buoyancy_productionᶜᶜᶜ(i, j, k, grid, clock, C, parameters) =
+    thermodynamic_functionᶜᶜᶜ(i, j, k, grid, buoyancy_θ, parameters.buoyancy, C) * θ_productionᶜᶜᶜ(i, j, k, grid, clock, C, parameters)
+
+# σ_b = σ_b_heating + σ_b_nonlin, so that Db/Dt = σ_b - ∇·j_b
 @inline buoyancy_productionᶜᶜᶜ(i, j, k, grid, clock, C, parameters) =
-    thermodynamic_functionᶜᶜᶜ(i, j, k, grid, buoyancy_θ, parameters.buoyancy, C) * θ_productionᶜᶜᶜ(i, j, k, grid, clock, C, parameters) +
-    nonlinear_buoyancy_productionᶜᶜᶜ(i, j, k, grid, clock, C, parameters)
+    heating_buoyancy_productionᶜᶜᶜ(i, j, k, grid, clock, C, parameters) + nonlinear_buoyancy_productionᶜᶜᶜ(i, j, k, grid, clock, C, parameters)
 
 # σ_η = ε / T + κ_θ cₚ |∇T|² / T² + κ_S (∂μ/∂S)_T |∇S + Γ_S 𝐤|² / T ≥ 0
 @inline entropy_productionᶜᶜᶜ(i, j, k, grid, clock, C, parameters) =

@@ -13,17 +13,21 @@ export
     ThermodynamicBuoyancy, ThermodynamicDiffusivity, thermodynamic_model_components,
 
     # Diagnostics
-    thermodynamic_diagnostics
+    thermodynamic_diagnostics, energetics
 
+using KernelAbstractions: @index, @kernel
 using Oceananigans: Oceananigans
-using Oceananigans.Grids: Center, Face, NegativeZDirection, znode
+using Oceananigans.Architectures: CPU, architecture, on_architecture
+using Oceananigans.BoundaryConditions: fill_halo_regions!
+using Oceananigans.Fields: Field, FieldStatus, compute_at!, interior, set_status!
+using Oceananigans.Grids: Center, Face, NegativeZDirection, XYZRegularRG, znode
 using Oceananigans.Operators: ∂xᶠᶜᶜ, ∂yᶜᶠᶜ, ∂zᶜᶜᶠ, ℑxᶠᵃᵃ, ℑyᵃᶠᵃ, ℑzᵃᵃᶠ, ℑxᶜᵃᵃ, ℑyᵃᶜᵃ, ℑzᵃᵃᶜ,
                               ℑxyᶜᶜᵃ, ℑxzᶜᵃᶜ, ℑyzᵃᶜᶜ, δxᶜᵃᵃ, δxᶠᵃᵃ, δyᵃᶜᵃ, δyᵃᶠᵃ, δzᵃᵃᶜ, δzᵃᵃᶠ,
                               Axᶜᶜᶜ, Axᶠᶜᶜ, Axᶠᶠᶜ, Axᶠᶜᶠ, Ayᶜᶜᶜ, Ayᶜᶠᶜ, Ayᶠᶠᶜ, Ayᶜᶠᶠ, Azᶜᶜᶜ, Azᶜᶜᶠ, Azᶠᶜᶠ, Azᶜᶠᶠ,
-                              Vᶜᶜᶜ, Vᶠᶜᶜ, Vᶜᶠᶜ, Vᶜᶜᶠ, Δzᶜᶜᶠ
+                              Vᶜᶜᶜ, Vᶠᶜᶜ, Vᶜᶠᶜ, Vᶜᶜᶠ, Δzᶜᶜᶜ, Δzᶜᶜᶠ
 using Oceananigans.AbstractOperations: KernelFunctionOperation
 using Oceananigans.Forcings: Forcing
-using Oceananigans.Utils: prettysummary
+using Oceananigans.Utils: launch!, prettysummary
 using Oceananigans.TimeSteppers: ExplicitTimeDiscretization
 using Oceananigans.BuoyancyFormulations: BuoyancyForce, θ_and_sᴬ
 using Oceananigans.TurbulenceClosures: AbstractTurbulenceClosure, ScalarDiffusivity, biharmonic_mask_x, biharmonic_mask_y, biharmonic_mask_z,
@@ -31,6 +35,7 @@ using Oceananigans.TurbulenceClosures: AbstractTurbulenceClosure, ScalarDiffusiv
                                        viscous_flux_vz, viscous_flux_wx, viscous_flux_wy, viscous_flux_wz,
                                        min_Δxyz, ThreeDimensionalFormulation
 
+import Oceananigans.Fields: compute!
 import Oceananigans.Utils: with_tracers
 import Oceananigans.Diagnostics: cell_diffusion_timescale
 import Oceananigans.TurbulenceClosures: diffusive_flux_x, diffusive_flux_y, diffusive_flux_z
@@ -43,6 +48,8 @@ include("diffusivity.jl")
 include("production.jl")
 include("model_components.jl")
 include("diagnostics.jl")
+include("reference_state.jl")
+include("energetics.jl")
 include("show_thermodynamics.jl")
 
 end # module

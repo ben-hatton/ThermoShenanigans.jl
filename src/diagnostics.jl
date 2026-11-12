@@ -14,7 +14,8 @@ Return a `NamedTuple` of `KernelFunctionOperation`s for a model built with
 
 * at (Center, Center, Center): potential energy `𝒫 = h⁰ - b (z - z₀)`, temperature `T`, Exner function `π`,
   chemical potential analogue `m`, chemical potential `μ`, dissipation `ε`, θ production `σ_θ`,
-  buoyancy production `σ_b`, its nonlinear part `σ_b_nonlin = j_θ·∇b_θ + j_S·∇b_S`, entropy production `σ_η`,
+  buoyancy production `σ_b = σ_b_heating + σ_b_nonlin`, split into the part `σ_b_heating = b_θ σ_θ` due to the
+  θ source and the nonlinear (cabbeling) part `σ_b_nonlin = j_θ·∇b_θ + j_S·∇b_S`, entropy production `σ_η`,
   and the potential energy `conversion = j_θ·∇π + j_S·∇m`;
 * at faces: the fluxes `j_θ`, `j_S` and `j_b = b_θ j_θ + b_S j_S`, each a `NamedTuple` of `(x, y, z)` components,
   and the buoyancy work `wb = w b̃` at (Center, Center, Face), with b̃ the buoyancy force used by the model.
@@ -35,6 +36,7 @@ function thermodynamic_diagnostics(model)
             ε          = center_operation(dissipationᶜᶜᶜ, grid, clock, C, parameters),
             σ_θ        = center_operation(θ_productionᶜᶜᶜ, grid, clock, C, parameters),
             σ_b        = center_operation(buoyancy_productionᶜᶜᶜ, grid, clock, C, parameters),
+            σ_b_heating = center_operation(heating_buoyancy_productionᶜᶜᶜ, grid, clock, C, parameters),
             σ_b_nonlin = center_operation(nonlinear_buoyancy_productionᶜᶜᶜ, grid, clock, C, parameters),
             σ_η        = center_operation(entropy_productionᶜᶜᶜ, grid, clock, C, parameters),
             conversion = center_operation(potential_energy_conversionᶜᶜᶜ, grid, clock, C, parameters),

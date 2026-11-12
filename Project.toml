@@ -4,8 +4,10 @@ authors = ["Benedict Hatton <benedicthatton@gmail.com>"]
 version = "0.1.0"
 
 [deps]
+KernelAbstractions = "63c18a36-062a-441e-b654-da1e3ab1ce7c"
 Oceananigans = "9e8cae18-63c1-5223-a75c-80ca9d6e9a09"
 
 [compat]
+KernelAbstractions = "0.9"
 Oceananigans = "0.116"
 julia = "1.10"
