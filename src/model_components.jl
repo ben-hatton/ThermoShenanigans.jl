@@ -4,7 +4,7 @@
 
 Return `(; buoyancy, closure, forcing)` for `NonhydrostaticModel(grid; tracers, thermodynamic_model_components(...)...)`.
 With `consistent = true` the closure is `(ScalarDiffusivity(ν = viscosity), ThermodynamicDiffusivity(...))` with the
-θ forcing σ_θ, so that kinetic plus static energy is conserved. With `consistent = false` it is the standard
+θ forcing σ_θ, so that kinetic plus potential energy is conserved. With `consistent = false` it is the standard
 `ScalarDiffusivity(ν = viscosity, κ = (θ = thermal_diffusivity, S = salt_diffusivity))` with no σ_θ.
 σ_θ evaluates ε without closure fields, so `viscosity` must not need any. Energy is conserved exactly with
 Oceananigans' default `Centered(order = 2)` advection. Wall fluxes of θ and S are set only by `FluxBoundaryCondition`s.

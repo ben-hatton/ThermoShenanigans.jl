@@ -4,7 +4,7 @@
 Buoyancy formulation with b(θ, S) from `thermodynamics`. Fields:
 
 * `thermodynamics`: an `AbstractBoussinesqThermodynamics`
-* `surface_height`: height z at which the pressure is the reference pressure P₀
+* `surface_height`: height z₀ at which the pressure is the reference pressure P₀
 * `constant_salinity`: the value at which S is held, or `nothing` if S is a tracer
 """
 struct ThermodynamicBuoyancy{TH, FT, S} <: AbstractBuoyancyFormulation{TH}
@@ -17,7 +17,7 @@ end
     ThermodynamicBuoyancy(grid, thermodynamics; surface_height = top of grid, constant_salinity = nothing)
 
 Return a buoyancy formulation with b(θ, S) from `thermodynamics`, reading tracers `θ` and `S`.
-z-dependent variables (π, T, μ) use the height above `surface_height`, where the pressure is P₀.
+z-dependent variables (π, m, T, μ) use the height z - z₀ above z₀ = `surface_height`, where the pressure is P₀.
 If `constant_salinity` is a number, only `θ` is required and S is held at that value.
 
 ```jldoctest
@@ -55,6 +55,7 @@ required_tracers(::ConstantSalinityThermodynamicBuoyancy) = (:θ,)
 
 # Thermodynamic functions at (Center, Center, Center), from the centred θ, S and z
 
+# z - z₀, the height above the surface z₀ where the pressure is P₀
 @inline height_above_surfaceᶜᶜᶜ(i, j, k, grid, buoyancy_formulation) =
     znode(i, j, k, grid, Center(), Center(), Center()) - buoyancy_formulation.surface_height
 
@@ -81,7 +82,7 @@ required_tracers(::ConstantSalinityThermodynamicBuoyancy) = (:θ,)
 Energy-consistent buoyancy force at w-points: the discrete-gradient buoyancy
     b̃ = [δz(b z) - ℑz(b_θ z) δzθ - ℑz(b_S z) δzS] / Δz   at (Center, Center, Face).
 With centred second-order tracer advection, the buoyancy work Σ w b̃ V then exactly balances the advective change of
-Σ Σ(θ, S, z) V whenever h⁰ and b are at most quadratic in (θ, S). For a linear b, b̃ = ℑz b.
+Σ 𝒫(θ, S, z) V whenever h⁰ and b are at most quadratic in (θ, S). For a linear b, b̃ = ℑz b.
 =#
 @inline buoyancy_height(θ, S, z, thermodynamics)   = buoyancy(θ, S, thermodynamics) * z
 @inline buoyancy_θ_height(θ, S, z, thermodynamics) = ∂b∂θ(θ, S, thermodynamics) * z

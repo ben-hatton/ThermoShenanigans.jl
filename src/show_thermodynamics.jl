@@ -7,9 +7,9 @@ Base.show(io::IO, thermodynamics::CabbelingBoussinesqThermodynamics) =
                                        ", α=", prettysummary(thermodynamics.thermal_expansion),
                                        ", β=", prettysummary(thermodynamics.haline_contraction),
                                        ", γ=", prettysummary(thermodynamics.cabbeling_coefficient),
-                                       ", θᵣ=", prettysummary(thermodynamics.reference_temperature),
-                                       ", Sᵣ=", prettysummary(thermodynamics.reference_salinity),
-                                       ", cₚ⁰=", prettysummary(thermodynamics.reference_heat_capacity),
+                                       ", T₀=", prettysummary(thermodynamics.reference_temperature),
+                                       ", S₀=", prettysummary(thermodynamics.reference_salinity),
+                                       ", cₚ₀=", prettysummary(thermodynamics.reference_heat_capacity),
                                        ", R_S=", prettysummary(thermodynamics.saline_entropy_constant), ")")
 
 Base.show(io::IO, buoyancy_formulation::ThermodynamicBuoyancy) =
@@ -19,6 +19,6 @@ Base.show(io::IO, buoyancy_formulation::ConstantSalinityThermodynamicBuoyancy) =
                                              ", constant_salinity=", prettysummary(buoyancy_formulation.constant_salinity))
 
 Base.summary(closure::ThermodynamicDiffusivity) =
-    string("ThermodynamicDiffusivity(κ_T=", prettysummary(closure.thermal_diffusivity),
+    string("ThermodynamicDiffusivity(κ_θ=", prettysummary(closure.thermal_diffusivity),
            ", κ_S=", prettysummary(closure.salt_diffusivity), ")")
 Base.show(io::IO, closure::ThermodynamicDiffusivity) = print(io, summary(closure))

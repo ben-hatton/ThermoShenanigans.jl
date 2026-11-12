@@ -39,7 +39,9 @@ jobs:
           version: ${{ matrix.version }}
       - uses: julia-actions/cache@v2
       - uses: julia-actions/julia-buildpkg@v1
-      # --check-bounds=yes (the Pkg.test default) roughly doubles kernel compilation time
+      # --check-bounds=yes (the Pkg.test default) roughly doubles kernel compilation time; coverage is not
+      # collected, since it forces a separate precompilation of every dependency and slows every test
       - uses: julia-actions/julia-runtest@v1
         with:
           check_bounds: auto
+          coverage: false

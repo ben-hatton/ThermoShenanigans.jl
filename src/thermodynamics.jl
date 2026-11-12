@@ -3,7 +3,7 @@
 
 Supertype for Boussinesq thermodynamics, defined by b(θ, S) (including g), h⁰(θ, S) and η⁰(θ, S),
 where θ is a generic entropic variable. Unlike depth-dependent equations of state (e.g. TEOS-10 in Oceananigans),
-b is independent of z: z enters only through Σ = h⁰ - b z.
+b is independent of z: z enters only through Σ = h⁰ - b (z - z₀) + p + g₀ z₀.
 
 Subtypes implement, each as `f(θ, S, thermodynamics)`,
 
@@ -24,9 +24,9 @@ Thermodynamics with buoyancy quadratic in θ. Fields:
 * `thermal_expansion`: α
 * `haline_contraction`: β
 * `cabbeling_coefficient`: γ
-* `reference_temperature`: θᵣ
-* `reference_salinity`: Sᵣ
-* `reference_heat_capacity`: cₚ⁰
+* `reference_temperature`: T₀
+* `reference_salinity`: S₀
+* `reference_heat_capacity`: cₚ₀
 * `saline_entropy_constant`: R_S
 """
 struct CabbelingBoussinesqThermodynamics{FT} <: AbstractBoussinesqThermodynamics
@@ -47,9 +47,11 @@ end
 
 Return thermodynamics with θ the absolute potential temperature and
 
-    b  = g [α (θ - θᵣ) + ½ γ (θ - θᵣ)² - β (S - Sᵣ)]
-    h⁰ = cₚ⁰ θ
-    η⁰ = cₚ⁰ ln(θ / θᵣ) + η_sal(S),   η_sal = - R_S S (ln S - 1)
+    b  = g [α (θ - T₀) + ½ γ (θ - T₀)² - β (S - S₀)]
+    h⁰ = cₚ₀ (θ - T₀)
+    η⁰ = cₚ₀ ln(θ / T₀) - R_S [S ln(S / S₀) - (S - S₀)]
+
+following Tailleux, Dubos & Hatton (arXiv:2512.18461), with the gauge h⁰ = η⁰ = 0 at (T₀, S₀).
 
 γ = 0 gives a linear equation of state.
 The default R_S = R / M_S ≈ 264.76 J kg⁻¹ K⁻¹ is the ideal entropy of mixing of standard seawater,
@@ -61,7 +63,7 @@ julia> using ThermoShenanigans
 
 julia> CabbelingBoussinesqThermodynamics(thermal_expansion = 2e-4, haline_contraction = 0.8, reference_temperature = 283,
                                          reference_salinity = 0.035, reference_heat_capacity = 4000)
-CabbelingBoussinesqThermodynamics{Float64}(g=9.80665, α=0.0002, β=0.8, γ=0.0, θᵣ=283.0, Sᵣ=0.035, cₚ⁰=4000.0, R_S=264.76)
+CabbelingBoussinesqThermodynamics{Float64}(g=9.80665, α=0.0002, β=0.8, γ=0.0, T₀=283.0, S₀=0.035, cₚ₀=4000.0, R_S=264.76)
 ```
 """
 function CabbelingBoussinesqThermodynamics(FT = Oceananigans.defaults.FloatType;
@@ -137,7 +139,7 @@ Second derivative b_SS of the buoyancy.
 Potential enthalpy h⁰(θ, S), the enthalpy at the reference pressure.
 """
 @inline potential_enthalpy(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics) =
-    thermodynamics.reference_heat_capacity * θ
+    thermodynamics.reference_heat_capacity * (θ - thermodynamics.reference_temperature)
 
 """
     ∂h⁰∂θ(θ, S, thermodynamics)
@@ -181,7 +183,7 @@ Entropy η⁰(θ, S) at the reference pressure.
 """
 @inline entropy(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics) =
     thermodynamics.reference_heat_capacity * log(θ / thermodynamics.reference_temperature) -
-    thermodynamics.saline_entropy_constant * S * (log(S) - 1)
+    thermodynamics.saline_entropy_constant * (S * log(S / thermodynamics.reference_salinity) - (S - thermodynamics.reference_salinity))
 
 """
     ∂η⁰∂θ(θ, S, thermodynamics)
@@ -196,7 +198,7 @@ Derivative η⁰_θ of the entropy with respect to θ.
 Derivative η⁰_S of the entropy with respect to S.
 """
 @inline ∂η⁰∂S(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics) =
-    - thermodynamics.saline_entropy_constant * log(S)
+    - thermodynamics.saline_entropy_constant * log(S / thermodynamics.reference_salinity)
 
 """
     ∂²η⁰∂θ²(θ, S, thermodynamics)
@@ -222,17 +224,20 @@ Second derivative η⁰_SS of the entropy.
     - thermodynamics.saline_entropy_constant / S
 
 #=
-Derived from Σ = h⁰ - b z and η⁰, with z the height above the reference level. Since
-dΣ = π dθ + Σ_S dS = T dη + μ dS at fixed z, T and μ are the temperature and chemical potential, and
-Σ_S = (∂Σ/∂S)_θ is the chemical potential analogue of de Szoeke (2000, J. Phys. Oceanogr.).
+Derived from Σ = h⁰ - b (z - z₀) + p + g₀ z₀ at fixed p, and η⁰. The functions below take the height z - z₀ above the surface z₀, where the
+pressure is P₀, as their argument `z`. Since dΣ = π dθ + m dS = T dη + μ dS at fixed z, T and μ are the temperature
+and chemical potential (T_B and μ_B of Tailleux, Dubos & Hatton), and m = (∂Σ/∂S)_θ is the chemical potential
+analogue of de Szoeke (2000, J. Phys. Oceanogr.).
 =#
 
 """
-    static_energy(θ, S, z, thermodynamics)
+    potential_energy(θ, S, z, thermodynamics)
 
-Static energy Σ = h⁰ - b z, with z the height above the reference level.
+Potential energy 𝒫 = Σ - p ∂Σ/∂p = h⁰ - b z, with z the height above the surface z₀, as in
+Tailleux, Dubos & Hatton up to the constant g₀ z₀. The static energy Σ = 𝒫 + p + g₀ z₀ itself needs the pressure p.
+At fixed z, 𝒫 has the same derivatives π and m as Σ.
 """
-@inline static_energy(θ, S, z, thermodynamics) =
+@inline potential_energy(θ, S, z, thermodynamics) =
     potential_enthalpy(θ, S, thermodynamics) - buoyancy(θ, S, thermodynamics) * z
 
 """
@@ -245,7 +250,7 @@ Exner function π = Σ_θ = h⁰_θ - b_θ z.
 """
     chemical_potential_analogue(θ, S, z, thermodynamics)
 
-Chemical potential analogue Σ_S = (∂Σ/∂S)_θ = h⁰_S - b_S z.
+Chemical potential analogue m = (∂Σ/∂S)_θ = h⁰_S - b_S z.
 """
 @inline chemical_potential_analogue(θ, S, z, thermodynamics) =
     ∂h⁰∂S(θ, S, thermodynamics) - ∂b∂S(θ, S, thermodynamics) * z
@@ -260,7 +265,7 @@ Temperature T = π / η⁰_θ.
 """
     chemical_potential(θ, S, z, thermodynamics)
 
-Chemical potential μ = Σ_S - T η⁰_S.
+Chemical potential μ = m - T η⁰_S.
 """
 @inline chemical_potential(θ, S, z, thermodynamics) =
     chemical_potential_analogue(θ, S, z, thermodynamics) - temperature(θ, S, z, thermodynamics) * ∂η⁰∂S(θ, S, thermodynamics)
@@ -307,7 +312,7 @@ Isothermal derivative (∂b/∂S)_T,z = b_S - b_θ T_S / T_θ of the buoyancy.
 """
     isothermal_∂μ∂S(θ, S, z, thermodynamics)
 
-Isothermal derivative (∂μ/∂S)_T,z = Σ_SS - T η⁰_SS - η⁰_θ T_S² / T_θ of the chemical potential.
+Isothermal derivative (∂μ/∂S)_T,z = m_S - T η⁰_SS - η⁰_θ T_S² / T_θ of the chemical potential.
 """
 @inline isothermal_∂μ∂S(θ, S, z, thermodynamics) =
     ∂²h⁰∂S²(θ, S, thermodynamics) - ∂²b∂S²(θ, S, thermodynamics) * z -

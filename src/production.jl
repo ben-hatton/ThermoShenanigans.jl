@@ -52,13 +52,13 @@ for (dir, δ, ∂, ℑᶠ, A, V, wall_mask) in ((:x, δxᶠᵃᵃ, ∂xᶠᶜᶜ
             $ℑᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, buoyancy_S, buoyancy_formulation, C) *
             $salt_flux(i, j, k, grid, closure, buoyancy_formulation, C)
 
-        # κ_S ℑ((∂μ/∂S)_T / T) (∂S - Γ)², zero for constant salinity
+        # κ_S ℑ((∂μ/∂S)_T / T) (∂S + Γ_S)², zero for constant salinity
         @inline $salt_entropy_production(i, j, k, grid, closure, buoyancy_formulation, C) =
             closure.salt_diffusivity * $ℑᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, salt_entropy_coefficient, buoyancy_formulation, C) *
                                        $salt_gradient(i, j, k, grid, buoyancy_formulation, C)^2
         @inline $salt_entropy_production(i, j, k, grid, closure, buoyancy_formulation::ConstantSalinityThermodynamicBuoyancy, C) = zero(grid)
 
-        # V [κ_T ℑ(cₚ/T²) (∂T)² + κ_S ℑ((∂μ/∂S)_T / T) (∂S - Γ)²] ≥ 0
+        # V [κ_θ ℑ(cₚ/T²) (∂T)² + κ_S ℑ((∂μ/∂S)_T / T) (∂S + Γ_S)²] ≥ 0
         @inline $unmasked_entropy_production(i, j, k, grid, closure, buoyancy_formulation, C) =
             $V(i, j, k, grid) * (closure.thermal_diffusivity *
                                  $ℑᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, heat_entropy_coefficient, buoyancy_formulation, C) *
@@ -84,8 +84,8 @@ the `ThermodynamicDiffusivity` and the `ThermodynamicBuoyancy`.
 @inline dissipationᶜᶜᶜ(i, j, k, grid, clock, C, parameters) =
     viscous_dissipation_rateᶜᶜᶜ(i, j, k, grid, parameters.viscous_closure, parameters.closure_fields, clock, C, parameters.buoyancy)
 
-# j_θ·∇π + j_S·∇Σ_S, the conversion of static energy by the fluxes
-@inline static_energy_conversionᶜᶜᶜ(i, j, k, grid, clock, C, parameters) =
+# j_θ·∇π + j_S·∇m, the conversion of potential energy by the fluxes
+@inline potential_energy_conversionᶜᶜᶜ(i, j, k, grid, clock, C, parameters) =
     flux_contractionᶜᶜᶜ(i, j, k, grid, exner, chemical_potential_analogue, parameters.diffusivity, parameters.buoyancy, C)
 
 # σ_b_nonlin = j_θ·∇b_θ + j_S·∇b_S, nonzero only for a nonlinear equation of state
@@ -93,12 +93,12 @@ the `ThermodynamicDiffusivity` and the `ThermodynamicBuoyancy`.
     flux_contractionᶜᶜᶜ(i, j, k, grid, buoyancy_θ, buoyancy_S, parameters.diffusivity, parameters.buoyancy, C)
 
 #=
-σ_θ = [ε - j_θ·∇π - j_S·∇Σ_S] / π, so that π (σ_θ - ∇·j_θ) - Σ_S ∇·j_S = ε - ∇·(π j_θ + Σ_S j_S):
-the static energy Σ gains exactly the kinetic energy lost to viscosity, plus a flux divergence (first law).
+σ_θ = [ε - j_θ·∇π - j_S·∇m] / π, so that π (σ_θ - ∇·j_θ) - m ∇·j_S = ε - ∇·(π j_θ + m j_S):
+the potential energy 𝒫 gains exactly the kinetic energy lost to viscosity, plus a flux divergence (first law).
 Used directly as the θ forcing.
 =#
 @inline θ_productionᶜᶜᶜ(i, j, k, grid, clock, C, parameters) =
-    (dissipationᶜᶜᶜ(i, j, k, grid, clock, C, parameters) - static_energy_conversionᶜᶜᶜ(i, j, k, grid, clock, C, parameters)) /
+    (dissipationᶜᶜᶜ(i, j, k, grid, clock, C, parameters) - potential_energy_conversionᶜᶜᶜ(i, j, k, grid, clock, C, parameters)) /
     thermodynamic_functionᶜᶜᶜ(i, j, k, grid, exner, parameters.buoyancy, C)
 
 # σ_b = b_θ σ_θ + σ_b_nonlin, so that Db/Dt = σ_b - ∇·j_b
@@ -106,7 +106,7 @@ Used directly as the θ forcing.
     thermodynamic_functionᶜᶜᶜ(i, j, k, grid, buoyancy_θ, parameters.buoyancy, C) * θ_productionᶜᶜᶜ(i, j, k, grid, clock, C, parameters) +
     nonlinear_buoyancy_productionᶜᶜᶜ(i, j, k, grid, clock, C, parameters)
 
-# σ_η = ε / T + κ_T cₚ |∇T|² / T² + κ_S (∂μ/∂S)_T |∇S - Γ 𝐤|² / T ≥ 0
+# σ_η = ε / T + κ_θ cₚ |∇T|² / T² + κ_S (∂μ/∂S)_T |∇S + Γ_S 𝐤|² / T ≥ 0
 @inline entropy_productionᶜᶜᶜ(i, j, k, grid, clock, C, parameters) =
     dissipationᶜᶜᶜ(i, j, k, grid, clock, C, parameters) /
     thermodynamic_functionᶜᶜᶜ(i, j, k, grid, temperature, parameters.buoyancy, C) +

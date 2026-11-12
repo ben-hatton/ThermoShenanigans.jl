@@ -2,7 +2,7 @@
 #
 # A deliberately extreme test of energy conservation: a two-dimensional Rayleigh–Taylor instability
 # with a strongly nonlinear (cabbeling) equation of state and strong molecular diffusion, so that
-# the kinetic energy 𝒦, the static energy 𝒫 = ∫ Σ dV, viscous dissipation and entropy production
+# the kinetic energy 𝒦, the potential energy 𝒫, viscous dissipation and entropy production
 # are all large. The total energy 𝒦 + 𝒫 changes only through the RK3 time-stepping error, which
 # falls by about 8× when Δt is halved.
 #
@@ -45,8 +45,8 @@ Sᵢ(x, z) = 0.035 + 1e-3 * layer(x, z)
 # We run the same simulation with two time steps, each saving the volume integrals of the energy budget
 # in double precision.
 # 𝒦 is integrated at the native locations of `u` and `w`, so that it is exactly the discrete kinetic energy.
-# Σ - Σ₀ is differenced cell by cell before integrating, because Σ ≈ cₚ θ is about 10⁶ times larger than
-# its changes.
+# 𝒫 - 𝒫₀ is differenced cell by cell before integrating, because the internal energy
+# cₚ₀ (θ - T₀) in 𝒫 is much larger than its changes.
 
 output_dir = joinpath(@__DIR__, "output")
 
@@ -57,12 +57,12 @@ function run_energy_budget(grid, thermodynamics, initial_conditions, output_dir,
 
     u, v, w = model.velocities
     diagnostics = thermodynamic_diagnostics(model)
-    Σ₀ = CenterField(grid)
-    set!(Σ₀, diagnostics.Σ)
+    𝒫₀ = CenterField(grid)
+    set!(𝒫₀, diagnostics.𝒫)
 
     budget = (𝒦ᵘ  = Integral(u^2 / 2),
               𝒦ʷ  = Integral(w^2 / 2),
-              Δ𝒫  = Integral(diagnostics.Σ - Σ₀),
+              Δ𝒫  = Integral(diagnostics.𝒫 - 𝒫₀),
               wb  = Integral(diagnostics.wb),
               ε   = Integral(diagnostics.ε),
               σ_η = Integral(diagnostics.σ_η))

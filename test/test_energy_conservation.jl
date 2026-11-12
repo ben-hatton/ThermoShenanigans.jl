@@ -54,12 +54,12 @@ using ThermoShenanigans: consistent_buoyancyᶜᶜᶠ
             set!(model, u = (x, y, z) -> 0.1 * sin(2π * x) * cos(π * z), θ = (x, y, z) -> 283 + 2 * tanh(10 * (z + 0.5)),
                         S = (x, y, z) -> 0.035 - 1e-3 * tanh(10 * (z + 0.5)))
             u, v, w = model.velocities
-            Σ = thermodynamic_diagnostics(model).Σ
-            Σ₀ = CenterField(section)
-            set!(Σ₀, Σ)
+            𝒫 = thermodynamic_diagnostics(model).𝒫
+            𝒫₀ = CenterField(section)
+            set!(𝒫₀, 𝒫)
 
-            # Σ - Σ₀ is differenced cell by cell, since Σ ≈ cₚ θ is much larger than its changes
-            energy() = integral(u -> u^2 / 2, u) + integral(w -> w^2 / 2, w) + integral(-, Σ, Σ₀)
+            # 𝒫 - 𝒫₀ is differenced cell by cell, since the internal energy cₚ₀ (θ - T₀) in 𝒫 is much larger than its changes
+            energy() = integral(u -> u^2 / 2, u) + integral(w -> w^2 / 2, w) + integral(-, 𝒫, 𝒫₀)
             E₀ = energy()
             for _ in 1:round(Int, stop_time / Δt)
                 time_step!(model, Δt)

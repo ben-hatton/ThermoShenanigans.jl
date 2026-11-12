@@ -4,14 +4,19 @@ using Oceananigans.Fields: location
 using Oceananigans.Operators: volume
 using Oceananigans.TimeSteppers: update_state!, compute_tendencies!
 using Oceananigans.TurbulenceClosures: ∇_dot_qᶜ, diffusive_flux_x, diffusive_flux_y, diffusive_flux_z
-using ThermoShenanigans: barodiffusion_coefficient
+using ThermoShenanigans: barodiffusion_coefficient, heat_flux_prefactor
 
 # TEST_GROUP=basic (the default) runs a quick core set; TEST_GROUP=all runs the full suite
 const test_group = get(ENV, "TEST_GROUP", "basic")
 
-# Set TEST_ARCHITECTURE=GPU to also run the architecture tests on a GPU; CUDA is loaded only then
+# Set TEST_ARCHITECTURE=GPU to also run the architecture tests on a GPU. CUDA is not a test dependency, since installing
+# and precompiling it dominates CPU-only runs, so it is added to the test environment only then.
 const test_gpu = get(ENV, "TEST_ARCHITECTURE", "CPU") == "GPU"
-test_gpu && @eval using CUDA
+if test_gpu
+    using Pkg: Pkg
+    Pkg.add("CUDA")
+    @eval using CUDA
+end
 archs = test_gpu ? (CPU(), GPU()) : (CPU(),)
 
 # Thermodynamics
@@ -54,10 +59,10 @@ coupled = CoupledTestThermodynamics(4000, 100, 9.81 * 2e-4)
 
 states = [(283.0, 0.035, 0.0), (275.5, 0.034, -50.0), (291.2, 0.0365, -1000.0)] # (θ, S, z)
 
-# θ on the isotherm T(θ, S, z) = T₀ (Newton; differentiable with ForwardDiff)
-function isothermal_θ(T₀, S, z, thermodynamics; θ = T₀ + zero(S * z))
+# θ on the isotherm T(θ, S, z) = T_isotherm (Newton; differentiable with ForwardDiff)
+function isothermal_θ(T_isotherm, S, z, thermodynamics; θ = T_isotherm + zero(S * z))
     for _ in 1:30
-        θ -= (temperature(θ, S, z, thermodynamics) - T₀) / ∂T∂θ(θ, S, z, thermodynamics)
+        θ -= (temperature(θ, S, z, thermodynamics) - T_isotherm) / ∂T∂θ(θ, S, z, thermodynamics)
     end
     return θ
 end
@@ -76,9 +81,9 @@ end
 test_grid(; size = (6, 6, 6), extent = (1, 1, 1)) = RectilinearGrid(; size, extent, topology = (Bounded, Bounded, Bounded))
 
 component_model(grid, thermo; tracers = (:θ, :S), momentum_advection = Centered(), boundary_conditions = NamedTuple(),
-                κ_T = 1e-3, model_kwargs...) =
+                κ_θ = 1e-3, model_kwargs...) =
     NonhydrostaticModel(grid; tracers, momentum_advection, boundary_conditions,
-                        thermodynamic_model_components(grid, thermo; viscosity = 1e-3, thermal_diffusivity = κ_T,
+                        thermodynamic_model_components(grid, thermo; viscosity = 1e-3, thermal_diffusivity = κ_θ,
                                                        salt_diffusivity = 1e-4, model_kwargs...)...)
 
 # Prescribed fluxes of θ and S at the top and bottom (positive upwards), and a passive tracer c
@@ -96,23 +101,23 @@ function set_random_state!(model; S = true)
     S ? set!(model, u = U, v = U, w = U, θ = θᵢ, S = Sᵢ) : set!(model, u = U, v = U, w = U, θ = θᵢ)
 end
 
-# Uniform T₀ on a single column, with S marched upwards so that δS / Δz = ℑΓ on every interior face
-function set_resting_equilibrium!(model, thermodynamics; T₀ = 283.0, S_bottom = 0.035)
+# Uniform T_isotherm on a single column, with S marched upwards so that δS / Δz = - ℑΓ_S on every interior face
+function set_resting_equilibrium!(model, thermodynamics; T_isotherm = 283.0, S_bottom = 0.035)
     grid = model.grid
     z, Nz, Δz = znodes(grid, Center()), size(grid, 3), zspacings(grid, Center())[1]
     S, θ = zeros(Nz), zeros(Nz)
     S[1] = S_bottom
-    θ[1] = isothermal_θ(T₀, S[1], z[1], thermodynamics)
-    Γ(k) = barodiffusion_coefficient(θ[k], S[k], z[k], thermodynamics)
+    θ[1] = isothermal_θ(T_isotherm, S[1], z[1], thermodynamics)
+    Γ_S(k) = barodiffusion_coefficient(θ[k], S[k], z[k], thermodynamics)
     for k in 2:Nz
         S[k], θ[k] = S[k-1], θ[k-1]
         for _ in 1:50
-            θ[k] = isothermal_θ(T₀, S[k], z[k], thermodynamics)
-            S[k] = S[k-1] + Δz * (Γ(k-1) + Γ(k)) / 2
+            θ[k] = isothermal_θ(T_isotherm, S[k], z[k], thermodynamics)
+            S[k] = S[k-1] - Δz * (Γ_S(k-1) + Γ_S(k)) / 2
         end
     end
     set!(model, θ = reshape(θ, 1, 1, Nz), S = reshape(S, 1, 1, Nz))
-    return S, Γ(1), Δz
+    return S, Γ_S(1), Δz
 end
 
 # Discrete integrals and fluxes
@@ -140,24 +145,24 @@ fluxes(m, id) = (computed(KernelFunctionOperation{Face, Center, Center}(diffusiv
                  computed(KernelFunctionOperation{Center, Face, Center}(diffusive_flux_y, m.grid, closure_args(m, id)...)),
                  z_flux(m, id))
 
-# dE/dt = ∫ uᵢ Gᵢ dV + ∫ (π G_θ + Σ_S G_S) dV from the model's own tendencies, with two scales:
-# the round-off scale ∫ |π G_θ| + |Σ_S G_S| dV (π ≈ cₚ makes this the largest term), and the size of the conversions ∫ |w b̃| + ε dV
+# dE/dt = ∫ uᵢ Gᵢ dV + ∫ (π G_θ + m G_S) dV from the model's own tendencies, with two scales:
+# the round-off scale ∫ |π G_θ| + |m G_S| dV (π ≈ cₚ makes this the largest term), and the size of the conversions ∫ |w b̃| + ε dV
 function energy_tendency(model)
     update_state!(model)
     compute_tendencies!(model, [])
     G = model.timestepper.Gⁿ
     u, v, w = model.velocities
     d = thermodynamic_diagnostics(model)
-    π, Σ_S, wb, ε = map(field, (d.π, d.Σ_S, d.wb, d.ε))
+    π, m, wb, ε = map(field, (d.π, d.m, d.wb, d.ε))
 
     kinetic = integral(*, u, G.u) + integral(*, v, G.v) + integral(*, w, G.w)
-    static, round_off = integral(*, π, G.θ), integral((a, b) -> abs(a * b), π, G.θ)
+    potential, round_off = integral(*, π, G.θ), integral((a, b) -> abs(a * b), π, G.θ)
 
     if haskey(G, :S)
-        static += integral(*, Σ_S, G.S)
-        round_off += integral((a, b) -> abs(a * b), Σ_S, G.S)
+        potential += integral(*, m, G.S)
+        round_off += integral((a, b) -> abs(a * b), m, G.S)
     end
 
     conversions = integral(abs, wb) + integral(ε)
-    return kinetic + static, round_off, conversions
+    return kinetic + potential, round_off, conversions
 end

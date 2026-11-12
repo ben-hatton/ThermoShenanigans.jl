@@ -3,26 +3,34 @@ using Oceananigans.TimeSteppers: update_state!, compute_tendencies!, compute_flu
 @testset "ThermodynamicDiffusivity" begin
     @testset "Isothermal derivatives [$(summary(thermodynamics))]" for thermodynamics in (cabbeling, coupled)
         for (θ, S, z) in states
-            T₀ = temperature(θ, S, z, thermodynamics)
-            @test - ∂T∂S(θ, S, z, thermodynamics) / ∂T∂θ(θ, S, z, thermodynamics) ≈ derivative(S -> isothermal_θ(T₀, S, z, thermodynamics; θ), S) atol=1e-12
-            @test isothermal_∂b∂S(θ, S, z, thermodynamics) ≈ derivative(S -> buoyancy(isothermal_θ(T₀, S, z, thermodynamics; θ), S, thermodynamics), S)
-            @test isothermal_∂μ∂S(θ, S, z, thermodynamics) ≈ derivative(S -> chemical_potential(isothermal_θ(T₀, S, z, thermodynamics; θ), S, z, thermodynamics), S)
+            T_isotherm = temperature(θ, S, z, thermodynamics)
+            @test - ∂T∂S(θ, S, z, thermodynamics) / ∂T∂θ(θ, S, z, thermodynamics) ≈ derivative(S -> isothermal_θ(T_isotherm, S, z, thermodynamics; θ), S) atol=1e-12
+            @test isothermal_∂b∂S(θ, S, z, thermodynamics) ≈ derivative(S -> buoyancy(isothermal_θ(T_isotherm, S, z, thermodynamics; θ), S, thermodynamics), S)
+            @test isothermal_∂μ∂S(θ, S, z, thermodynamics) ≈ derivative(S -> chemical_potential(isothermal_θ(T_isotherm, S, z, thermodynamics; θ), S, z, thermodynamics), S)
             # Maxwell relation (∂μ/∂z)_T = - (∂b/∂S)_T
-            @test derivative(z -> chemical_potential(isothermal_θ(T₀, S, z, thermodynamics; θ), S, z, thermodynamics), z) ≈ - isothermal_∂b∂S(θ, S, z, thermodynamics)
+            @test derivative(z -> chemical_potential(isothermal_θ(T_isotherm, S, z, thermodynamics; θ), S, z, thermodynamics), z) ≈ - isothermal_∂b∂S(θ, S, z, thermodynamics)
         end
 
         R_S, g, β = cabbeling.saline_entropy_constant, cabbeling.gravitational_acceleration, cabbeling.haline_contraction
         θ, S, z = states[2]
         T = temperature(θ, S, z, cabbeling)
-        @test barodiffusion_coefficient(θ, S, z, cabbeling) ≈ - g * β * S / (R_S * T)
+        @test barodiffusion_coefficient(θ, S, z, cabbeling) ≈ g * β * S / (R_S * T)
+    end
+
+    @testset "θ diffusivity is exactly κ_θ [$(summary(thermodynamics))]" for thermodynamics in (linear, cabbeling, coupled)
+        for (θ, S, z) in states
+            # π j_θ = - κ_θ cₚ ∇T + ..., and since cₚ / π = 1 / T_θ the ∇θ part of j_θ is - κ_θ ∇θ
+            @test heat_flux_prefactor(θ, S, z, thermodynamics) ≈ heat_capacity(θ, S, z, thermodynamics) / exner(θ, S, z, thermodynamics)
+            @test heat_flux_prefactor(θ, S, z, thermodynamics) * ∂T∂θ(θ, S, z, thermodynamics) ≈ 1
+        end
     end
 
     @testset "Resting equilibrium has zero fluxes [γ = $(thermodynamics.cabbeling_coefficient)]" for thermodynamics in (linear, cabbeling)
         model = component_model(test_grid(size = (1, 1, 16), extent = (1, 1, 1000)), thermodynamics)
         S, Γ₁, Δz = set_resting_equilibrium!(model, thermodynamics)
 
-        heat_scale = 1e-3 * 1 / Δz        # κ_T × 1 K / Δz
-        salt_scale = 1e-4 * abs(Γ₁)       # κ_S × Γ
+        heat_scale = 1e-3 * 1 / Δz        # κ_θ × 1 K / Δz
+        salt_scale = 1e-4 * abs(Γ₁)       # κ_S × Γ_S
         @test maximum(abs, z_flux(model, 1)) < 1e-10 * heat_scale
         @test maximum(abs, z_flux(model, 2)) < 1e-10 * salt_scale
         @test S[end] < S[1] # barodiffusion: saltier at depth
@@ -70,7 +78,7 @@ using Oceananigans.TimeSteppers: update_state!, compute_tendencies!, compute_flu
         @test all(iszero, interior(model.timestepper.Gⁿ.c))
 
         # The prescribed fluxes change only the boundary-cell tendencies, by - Q_top / Δz and + Q_bottom / Δz;
-        # with the energy identity on a bounded domain, this means the energy input is π Q_θ + Σ_S Q_S at the boundary
+        # with the energy identity on a bounded domain, this means the energy input is π Q_θ + m Q_S at the boundary
         G₀ = map(name -> Array(interior(model.timestepper.Gⁿ[name])), (θ = :θ, S = :S))
         compute_flux_bc_tendencies!(model)
         Nz, Δz = size(grid, 3), zspacings(grid, Center())[1]
@@ -84,7 +92,7 @@ using Oceananigans.TimeSteppers: update_state!, compute_tendencies!, compute_flu
     end
 
     @testset "Diffusive time-step constraint" begin
-        model = component_model(grid, cabbeling; κ_T = 2e-3) # ν = 1e-3 < κ_T
+        model = component_model(grid, cabbeling; κ_θ = 2e-3) # ν = 1e-3 < κ_θ
         @test DiffusiveCFL(0.1)(model) ≈ 0.1 * 2e-3 / 0.25^2
     end
 end

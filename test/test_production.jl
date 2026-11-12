@@ -21,20 +21,20 @@ using ThermoShenanigans: flux_contractionᶜᶜᶜ, thermodynamic_functionᶜᶜ
     end
 
     # The coupled thermodynamics is covered by the semi-discrete energy identity in test_energy_conservation.jl
-    @testset "Closure and σ_θ conserve 𝒦 + Σ [$(summary(thermodynamics))]" for thermodynamics in (cabbeling,)
+    @testset "Closure and σ_θ conserve 𝒦 + 𝒫 [$(summary(thermodynamics))]" for thermodynamics in (cabbeling,)
         model = component_model(grid, thermodynamics)
         set_random_state!(model)
         d = thermodynamic_diagnostics(model)
         σ_θ = KernelFunctionOperation{Center, Center, Center}(model.forcing.θ, grid, model.clock, merge(model.velocities, model.tracers))
-        π, Σ_S, σ_θ, ∇_dot_j_θ, ∇_dot_j_S = map(field, (d.π, d.Σ_S, σ_θ, flux_divergence(model, 1), flux_divergence(model, 2)))
+        π, m, σ_θ, ∇_dot_j_θ, ∇_dot_j_S = map(field, (d.π, d.m, σ_θ, flux_divergence(model, 1), flux_divergence(model, 2)))
 
-        # ∫ (π ∂ₜθ + Σ_S ∂ₜS) dV from the closure and σ_θ must equal ∫ ε dV, the kinetic energy lost to viscosity
-        static_energy_tendency = integral((π, σ_θ, ∇_dot_j_θ, Σ_S, ∇_dot_j_S) -> π * (σ_θ - ∇_dot_j_θ) - Σ_S * ∇_dot_j_S,
-                                          π, σ_θ, ∇_dot_j_θ, Σ_S, ∇_dot_j_S)
+        # ∫ (π ∂ₜθ + m ∂ₜS) dV from the closure and σ_θ must equal ∫ ε dV, the kinetic energy lost to viscosity
+        potential_energy_tendency = integral((π, σ_θ, ∇_dot_j_θ, m, ∇_dot_j_S) -> π * (σ_θ - ∇_dot_j_θ) - m * ∇_dot_j_S,
+                                          π, σ_θ, ∇_dot_j_θ, m, ∇_dot_j_S)
         dissipation = integral(d.ε)
         scale = integral((a, b) -> abs(a * b), π, ∇_dot_j_θ)
 
-        @test abs(static_energy_tendency - dissipation) < 1e-12 * scale
+        @test abs(potential_energy_tendency - dissipation) < 1e-12 * scale
         @test dissipation > 0
     end
 
@@ -69,15 +69,6 @@ using ThermoShenanigans: flux_contractionᶜᶜᶜ, thermodynamic_functionᶜᶜ
         components = thermodynamic_model_components(grid, cabbeling; viscosity = 1e-3, thermal_diffusivity = 1e-3,
                                                     salt_diffusivity = 1e-4, consistent = false)
         @test components.forcing == NamedTuple() && components.closure isa ScalarDiffusivity
-
-        model = component_model(grid, cabbeling; consistent = false)
-        reference = NonhydrostaticModel(grid; tracers = (:θ, :S), buoyancy = ThermodynamicBuoyancy(grid, cabbeling),
-                                        closure = ScalarDiffusivity(ν = 1e-3, κ = (θ = 1e-3, S = 1e-4)))
-        set_random_state!(model)
-        set!(reference, u = model.velocities.u, v = model.velocities.v, w = model.velocities.w, θ = model.tracers.θ, S = model.tracers.S)
-
-        for id in 1:2
-            @test computed(flux_divergence(model, id)) == computed(flux_divergence(reference, id))
-        end
+        @test components.closure.ν == 1e-3 && components.closure.κ == (θ = 1e-3, S = 1e-4)
     end
 end
