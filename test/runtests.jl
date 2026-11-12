@@ -13,6 +13,7 @@ if test_group == "all"
     include("test_diffusivity.jl")
     include("test_production.jl")
     include("test_energy_conservation.jl")
+    include("test_energetics.jl")
     include("test_architectures.jl")
 else
     include("test_basic.jl")

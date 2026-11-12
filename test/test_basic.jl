@@ -15,6 +15,13 @@
         @test all(≥(0), σ_η) && any(>(0), σ_η)
     end
 
+    @testset "𝒜 + 𝓑 = 𝒫 and 𝒜 ≥ 0" begin
+        e = energetics(model)
+        𝒜, 𝓑 = computed(e.𝒜), computed(e.𝓑)
+        @test 𝒜 .+ 𝓑 ≈ computed(thermodynamic_diagnostics(model).𝒫) rtol = 1e-14
+        @test all(≥(0), 𝒜)
+    end
+
     @testset "Time step" begin
         time_step!(model, 1e-3)
         @test all(isfinite, interior(model.tracers.θ)) && all(isfinite, interior(model.tracers.S))
