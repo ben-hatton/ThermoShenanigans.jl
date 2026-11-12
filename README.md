@@ -291,6 +291,7 @@ $Q_\theta = Q_H / (\rho_0 \pi)$.
 | `examples/energy_conservation` | 2D Rayleigh–Taylor instability with strong cabbeling; closes the energy budget and shows the third-order (RK3) fall of the energy error with $\Delta t$ |
 | `examples/two_layer_cabbeling` | 2D two-layer cabbeling instability after Bisits, Zika & Sohail (2025, JFM 1011 A17) |
 | `examples/two_layer_cabbeling/gpu` | the same experiment in 3D on a GPU, with a Slurm script and offline plotting |
+| `examples/cabbeling_energetics/reference_state.jl` | the 2D two-layer instability diagnosed with `energetics`: the reference buoyancy b★(z, t), local APE 𝒜, and the energy reservoirs 𝒦, 𝒜 and 𝓑 = ℐ + 𝒢★ |
 
 Run them with, for example,
 
