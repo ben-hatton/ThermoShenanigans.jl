@@ -10,11 +10,14 @@ using ThermoShenanigans: barodiffusion_coefficient, θ_flux_prefactor
 const test_group = get(ENV, "TEST_GROUP", "basic")
 
 # Set TEST_ARCHITECTURE=GPU to also run the architecture tests on a GPU. CUDA is not a test dependency, since installing
-# and precompiling it dominates CPU-only runs, so it is added to the test environment only then.
+# and precompiling it dominates CPU-only runs, so it is added to the test environment only then, unless the environment
+# already has it (as `benchmark/Project.toml`, used by `benchmark/gpu.slurm` on compute nodes without internet, does).
 const test_gpu = get(ENV, "TEST_ARCHITECTURE", "CPU") == "GPU"
 if test_gpu
-    using Pkg: Pkg
-    Pkg.add("CUDA")
+    if isnothing(Base.find_package("CUDA"))
+        using Pkg: Pkg
+        Pkg.add("CUDA")
+    end
     @eval using CUDA
 end
 archs = test_gpu ? (CPU(), GPU()) : (CPU(),)
