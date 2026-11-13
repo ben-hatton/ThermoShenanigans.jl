@@ -23,13 +23,18 @@ end
     model = architecture_model(arch, FT; step = full)
     @test model.closure[2] isa ThermodynamicDiffusivity{FT}
 
-    d = thermodynamic_diagnostics(model)
-    centred = full ? (:𝒫, :T, :π, :m, :μ, :ε, :σ_θ, :σ_b, :σ_b_nonlin, :σ_η, :conversion, :wb) : (:T, :σ_θ, :σ_η)
-    for name in centred
-        @test all(isfinite, computed(d[name]))
+    thermodynamic_functions = full ? (potential_energy, temperature, exner, chemical_potential_analogue, chemical_potential) :
+                                     (temperature,)
+    for f in thermodynamic_functions
+        @test all(isfinite, computed(thermodynamic_operation(model, f)))
     end
-    for name in (full ? (:j_θ, :j_S, :j_b) : (:j_θ,))
-        @test all(isfinite, computed(d[name].z))
+    productions = full ? (viscous_dissipation, θ_production, buoyancy_production, nonlinear_buoyancy_production,
+                          entropy_production, potential_energy_conversion, buoyancy_work) : (θ_production, entropy_production)
+    for diagnostic in productions
+        @test all(isfinite, computed(diagnostic(model)))
+    end
+    for flux in (full ? (θ_flux, salt_flux, buoyancy_flux) : (θ_flux,))
+        @test all(isfinite, computed(flux(model).z))
     end
 
     if arch isa GPU

@@ -6,8 +6,9 @@ using Oceananigans.BuoyancyFormulations: ∂z_b
         grid = RectilinearGrid(FT, size = (4, 4, 8), extent = (1, 1, 100))
         thermo = CabbelingBoussinesqThermodynamics(FT; cabbeling_coefficient = 1e-5, parameters...)
         @test thermo.saline_entropy_constant isa FT
-        @test ThermodynamicBuoyancy(grid, thermo).surface_height === zero(FT) # grid top
-        @test ThermodynamicBuoyancy(grid, thermo; surface_height = -10).surface_height === FT(-10)
+        @test thermo.reference_pressure_height === zero(FT)
+        @test CabbelingBoussinesqThermodynamics(FT; reference_pressure_height = -10, parameters...).reference_pressure_height === FT(-10)
+        @test ThermodynamicBuoyancy(grid, thermo).thermodynamics === thermo
     end
 
     grid = test_grid(size = (4, 4, 8), extent = (1, 1, 100))
@@ -23,8 +24,8 @@ using Oceananigans.BuoyancyFormulations: ∂z_b
         b = field(buoyancy_operation(model))
         @test b[i, j, k] ≈ buoyancy(θ[i, j, k], S[i, j, k], cabbeling)
 
-        # T at (C, C, C) uses the height above the surface
-        T = field(thermodynamic_diagnostics(model).T)
+        # T at (C, C, C) uses the height of the cell centre
+        T = field(thermodynamic_operation(model, temperature))
         @test T[i, j, k] ≈ temperature(θ[i, j, k], S[i, j, k], z, cabbeling)
 
         # N² is the difference of centred b at (C, C, F)
@@ -35,11 +36,33 @@ using Oceananigans.BuoyancyFormulations: ∂z_b
         model = component_model(grid, cabbeling; tracers = :θ, constant_salinity = 0.035)
         buoyancy_formulation = model.buoyancy.formulation
         @test ThermoShenanigans.required_tracers(buoyancy_formulation) == (:θ,)
-        @test sprint(show, buoyancy_formulation) == "ThermodynamicBuoyancy with CabbelingBoussinesqThermodynamics{Float64} and surface_height=0.0, constant_salinity=0.035"
+        @test sprint(show, buoyancy_formulation) == """
+            ThermodynamicBuoyancy:
+            ├── constant_salinity: 0.035
+            └── thermodynamics: CabbelingBoussinesqThermodynamics{Float64}"""
 
         set!(model, θ = (x, y, z) -> 283 + 2 * (1 + z / 100))
         θ = model.tracers.θ
         @test field(buoyancy_operation(model))[i, j, k] ≈ buoyancy(θ[i, j, k], 0.035, cabbeling)
-        @test field(thermodynamic_diagnostics(model).T)[i, j, k] ≈ temperature(θ[i, j, k], 0.035, z, cabbeling)
+        @test field(thermodynamic_operation(model, temperature))[i, j, k] ≈ temperature(θ[i, j, k], 0.035, z, cabbeling)
+    end
+
+    @testset "Translating the grid and the reference pressure height together" begin
+        # z enters the model only through z - z₀, so the translated model with z₀ translated too has the same dynamics
+        reference, translated, translated_without_z₀ = translated_models()
+        T, T_translated, T_without_z₀ = map(model -> computed(thermodynamic_operation(model, temperature)),
+                                            (reference, translated, translated_without_z₀))
+        @test T_translated ≈ T
+        @test !(T_without_z₀ ≈ T)
+        @test computed(thermodynamic_operation(translated, exner)) ≈ computed(thermodynamic_operation(reference, exner))
+
+        for model in (reference, translated)
+            time_step!(model, 1e-3)
+        end
+        for name in (:θ, :S)
+            @test interior(translated.tracers[name]) ≈ interior(reference.tracers[name])
+        end
+        @test interior(translated.velocities.w) ≈ interior(reference.velocities.w)
+        @test any(!iszero, interior(reference.velocities.w))
     end
 end

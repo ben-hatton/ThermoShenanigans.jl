@@ -50,8 +50,7 @@ set!(model, θ = (x, z) -> 283.15 + 2 * (z > -0.05), S = 0.035)
 simulation = Simulation(model; Δt = 0.1, stop_time = 60)
 run!(simulation)
 
-diagnostics = thermodynamic_diagnostics(model)
-σ_η = Field(diagnostics.σ_η) # entropy production diagnostic
+σ_η = Field(entropy_production(model)) # entropy production diagnostic
 ```
 
 `thermodynamic_model_components` returns the `buoyancy`, `closure` and `forcing` keyword arguments of
@@ -90,9 +89,11 @@ $$
 \Sigma(\theta, S, z, p) = h^0(\theta, S) - b(\theta, S)  (z - z_0) + p + g z_0 ,
 $$
 
-where $z_0$ is `surface_height`, which defaults to the top of the grid. The potential energy is
-$\mathcal{P} = \Sigma - p \, \partial \Sigma / \partial p = h^0(\theta, S) - b(\theta, S) (z - z_0)$, leaving out the
-constant $g z_0$. The derivatives of $\Sigma$ at fixed $p$ give the thermodynamic conjugate variables relative to
+where $z_0$ is the `reference_pressure_height` of the thermodynamics, the height at which the pressure is the
+reference pressure (0 by default). The potential energy is
+$\mathcal{P} = \Sigma - p \, \partial \Sigma / \partial p = h^0(\theta, S) - b(\theta, S) (z - z_0) + g z_0$.
+The thermodynamic functions of $z$, such as `potential_energy(θ, S, z, thermodynamics)`, take the height $z$ itself.
+The derivatives of $\Sigma$ at fixed $p$ give the thermodynamic conjugate variables relative to
 $(\theta, S, z)$:
 
 | Derivative | Expression | Name |
@@ -227,21 +228,28 @@ $h^0$, $\eta^0$ and $\mu - m$ vanish at $(T_0, S_0)$.
 ### Your own thermodynamics
 
 Subtype `AbstractBoussinesqThermodynamics` and add methods for $b$, $h^0$, $\eta^0$ and their first and second
-derivatives (18 functions in all), each called as `f(θ, S, thermodynamics)`:
+derivatives (18 functions), each called as `f(θ, S, thermodynamics)`, and for the reference pressure height $z_0$ and
+the gravitational acceleration $g$ included in $b$, each called as `f(thermodynamics)`:
 
 ```julia
 using ThermoShenanigans
 import ThermoShenanigans: buoyancy, ∂b∂θ, ∂b∂S, ∂²b∂θ², ∂²b∂θ∂S, ∂²b∂S²,
                           potential_enthalpy, ∂h⁰∂θ, ∂h⁰∂S, ∂²h⁰∂θ², ∂²h⁰∂θ∂S, ∂²h⁰∂S²,
-                          entropy, ∂η⁰∂θ, ∂η⁰∂S, ∂²η⁰∂θ², ∂²η⁰∂θ∂S, ∂²η⁰∂S²
+                          entropy, ∂η⁰∂θ, ∂η⁰∂S, ∂²η⁰∂θ², ∂²η⁰∂θ∂S, ∂²η⁰∂S²,
+                          reference_pressure_height, gravitational_acceleration
 
 struct MyThermodynamics{FT} <: AbstractBoussinesqThermodynamics
-    # parameters...
+    gravitational_acceleration :: FT
+    reference_pressure_height :: FT
+    # other parameters...
 end
 
 @inline buoyancy(θ, S, thermodynamics::MyThermodynamics) = ...
 @inline ∂b∂θ(θ, S, thermodynamics::MyThermodynamics)     = ...
-# ... and so on for all 18 functions
+# ... and so on for all 18 functions of θ and S
+
+@inline reference_pressure_height(thermodynamics::MyThermodynamics)  = thermodynamics.reference_pressure_height
+@inline gravitational_acceleration(thermodynamics::MyThermodynamics) = thermodynamics.gravitational_acceleration
 ```
 
 The functions are evaluated inside GPU kernels, so they must be `@inline`, type-stable and allocation-free.
@@ -259,10 +267,11 @@ The discrete equations conserve energy exactly (up to round-off and the time-ste
 **Buoyancy force.** The $w$ equation uses the discrete-gradient buoyancy
 
    $$
-   \tilde b = \frac{\delta_z(b  z) - \overline{b_\theta  z}^z  \delta_z \theta - \overline{b_S  z}^z  \delta_z S}{\Delta z}
+   \tilde b = \frac{\delta_z(b  z') - \overline{b_\theta  z'}^z  \delta_z \theta - \overline{b_S  z'}^z  \delta_z S}{\Delta z}
    $$
    
-   at $w$-points, where $\delta_z$ is the vertical difference and $\overline{(\cdot)}^z$ the vertical average.
+   at $w$-points, where $z' = z - z_0$, $\delta_z$ is the vertical difference and $\overline{(\cdot)}^z$ the vertical
+   average.
    With second-order centred tracer advection, the buoyancy work $\sum w \tilde b  \Delta V$ then exactly balances
    the advective change of $\sum \mathcal{P}  \Delta V$ whenever $h^0$ and $b$ are at most quadratic in $(\theta, S)$.
    For a linear $b$, $\tilde b$ is the usual average $\overline{b}^z$.
@@ -291,7 +300,9 @@ $Q_\theta = Q_H / (\rho_0 \pi)$.
 | `examples/energy_conservation` | 2D Rayleigh–Taylor instability with strong cabbeling; closes the energy budget and shows the third-order (RK3) fall of the energy error with $\Delta t$ |
 | `examples/two_layer_cabbeling` | 2D two-layer cabbeling instability after Bisits, Zika & Sohail (2025, JFM 1011 A17) |
 | `examples/two_layer_cabbeling/gpu` | the same experiment in 3D on a GPU, with a Slurm script and offline plotting |
-| `examples/cabbeling_energetics/reference_state.jl` | the 2D two-layer instability diagnosed with `energetics`: the reference buoyancy b★(z, t), local APE 𝒜, and the energy reservoirs 𝒦, 𝒜 and 𝓑 = ℐ + 𝒢★ |
+| `examples/cabbeling_energetics/reference_state.jl` | the 2D two-layer instability diagnosed with `reference_height` and the local energetics: the reference buoyancy b★(z, t), local APE 𝒜, and the energy reservoirs 𝒦, 𝒜 and ℬ = ℐ + 𝒢★ |
+| `examples/cabbeling_energetics/ape_budget.jl` | the local APE budget of the same instability: maps of the cabbeling production, the dissipation εₐ, the production 𝒩 by the error of the discrete advection (spurious mixing) and the reference term R★, the closed integrated budget, and a contrast run without cabbeling |
+| `examples/cabbeling_energetics/energy_cycle.jl` | the local budgets of all three reservoirs 𝒦, 𝒜 and ℬ for the same instability: the closed integrated Lorenz energy cycle (cabbeling and heating ℬ → 𝒜, w (b̃ - b★) 𝒜 → 𝒦, ε 𝒦 → ℬ, εₐ 𝒜 → ℬ, and the spurious conversion 𝒩 by the discrete advection), conversion rates, and maps of the fluxes j_𝒜 and j_ℬ |
 
 Run them with, for example,
 

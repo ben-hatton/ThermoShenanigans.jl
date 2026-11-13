@@ -5,16 +5,16 @@
 # than either layer.
 #
 # The Lorenz reference state is found by sorting the fluid by buoyancy. Each parcel then has a reference height z★,
-# and the potential energy 𝒫 = h⁰ - b (z - z₀) splits, cell by cell, into
+# and the potential energy 𝒫 = h⁰ - b (z - z₀) + g z₀ splits, cell by cell, into
 #
 #   * the available potential energy 𝒜 = - b (z - z★) + 𝒲★ ≥ 0, with 𝒲★ = p★(z) - p★(z★) the work against the
 #     reference pressure p★ = ∫ b★ dz, and
-#   * the background potential energy 𝓑 = ℐ + 𝒢★, with internal energy ℐ = h⁰ and gravitational part
-#     𝒢★ = - b (z★ - z₀) - 𝒲★.
+#   * the background potential energy ℬ = ℐ + 𝒢★ + g z₀, with internal energy ℐ = h⁰ and gravitational part
+#     𝒢★ = - b (z★ - z₀) - 𝒲★. Here the reference pressure height z₀ is 0, the default, at the top of the domain.
 #
 # This example demonstrates:
 #
-#   * How to compute the reference state and local energetics with `energetics`.
+#   * How to compute the reference state with `reference_height`, and the local energetics from it.
 #   * How to output the reference buoyancy profile b★(z) alongside fields and volume integrals.
 #
 # Run with `julia --project=examples examples/cabbeling_energetics/reference_state.jl`.
@@ -30,6 +30,13 @@ using CairoMakie
 #
 # As in `examples/two_layer_cabbeling`, after experiment IV of Bisits, Zika & Sohail (2025). The reference
 # values are those of the deep layer, so b = 0 there.
+#
+# Unlike `examples/two_layer_cabbeling`, the flow is resolved: the grid is twice as fine, and θ and S diffuse as
+# fast as momentum, κ = ν = 10⁻⁶ m² s⁻¹ instead of κ = 10⁻⁷ m² s⁻¹. The cell Péclet number |w| Δz / κ then stays
+# below about 2, where the default centred advection does not overshoot. With κ = 10⁻⁷ it reaches about 40 on
+# the coarser grid: θ and S overshoot their initial range by a few percent, and the error of the advection changes
+# the background potential energy as fast as the flow converts available potential energy into kinetic energy
+# (see `ape_budget.jl`).
 
 θ_deep, S_deep       = 273.15 + 0.5, 0.0347
 θ_shallow, S_shallow = 273.15 - 1.5, 0.03458
@@ -43,9 +50,9 @@ thermodynamics = CabbelingBoussinesqThermodynamics(thermal_expansion = α, halin
                                                    reference_temperature = θ_deep, reference_salinity = S_deep,
                                                    reference_heat_capacity = 3991.86795711963, gravitational_acceleration = g)
 
-grid = RectilinearGrid(size = (32, 256), x = (-0.035, 0.035), z = (-1, 0), topology = (Periodic, Flat, Bounded))
+grid = RectilinearGrid(size = (64, 512), x = (-0.035, 0.035), z = (-1, 0), topology = (Periodic, Flat, Bounded))
 
-components = thermodynamic_model_components(grid, thermodynamics; viscosity = 1e-6, thermal_diffusivity = 1e-7, salt_diffusivity = 1e-7)
+components = thermodynamic_model_components(grid, thermodynamics; viscosity = 1e-6, thermal_diffusivity = 1e-6, salt_diffusivity = 1e-6)
 model = NonhydrostaticModel(grid; tracers = (:θ, :S), components...)
 
 # Within each layer, S decreases upwards by a tiny amount, so that b increases by δb = 10⁻¹² m s⁻² per grid level.
@@ -55,45 +62,59 @@ model = NonhydrostaticModel(grid; tracers = (:θ, :S), components...)
 δb = 1e-12
 ∂S∂z = - δb / (g * β * zspacings(grid, Center())[1])
 
-θᵢ(x, z) = z > -0.5 ? θ_shallow : θ_deep
-Sᵢ(x, z) = (z > -0.5 ? S_shallow : S_deep) + ∂S∂z * (z + 0.5) + 2e-7 * randn() * exp(-((z + 0.5) / 0.02)^2)
+# The interface between the layers is resolved from the start, as a tanh profile a few grid cells thick, rather
+# than a step: `shallow_fraction` is the fraction of shallow-layer water, from 0 in the deep layer to 1 in the
+# shallow one. The noise that seeds the instability is confined to the interface, where the water is stratified.
+# In the nearly uniform layers, a small perturbation of b moves a parcel's reference height across the whole
+# layer, so the noise would hold a large 𝒜 that diffusion destroys within seconds.
+
+interface_thickness = 5e-3
+shallow_fraction(z) = (1 + tanh((z + 0.5) / interface_thickness)) / 2
+interface_noise(z) = 2e-7 * randn() * 4 * shallow_fraction(z) * (1 - shallow_fraction(z))
+
+θᵢ(x, z) = θ_deep + (θ_shallow - θ_deep) * shallow_fraction(z)
+Sᵢ(x, z) = S_deep + (S_shallow - S_deep) * shallow_fraction(z) + ∂S∂z * (z + 0.5) + interface_noise(z)
 set!(model, θ = θᵢ, S = Sᵢ)
 
-simulation = Simulation(model; Δt = 0.5, stop_time = 10minutes)
+simulation = Simulation(model; Δt = 0.25, stop_time = 15minutes)
 
 u, v, w = model.velocities
 progress(sim) = @printf("iteration: %d, time: %s, max|w|: %.2e m s⁻¹\n", iteration(sim), prettytime(sim), maximum(abs, w))
-add_callback!(simulation, progress, IterationInterval(200))
+add_callback!(simulation, progress, IterationInterval(400))
 
 # ## Energetics
 #
-# All the diagnostics of `energetics` share one sort of the buoyancy per output time.
+# The reference height z★ is a `Field` whose computation computes the reference state, here by sorting the
+# buoyancy, which is the default `method`. The diagnostics built on the same z★ share one computation of the
+# reference state per output time.
 
-e = energetics(model)
+z★ = reference_height(model; method = Sorting())
+𝒜 = available_potential_energy(z★)
 
 # We save 𝒜 and the displacement z - z★ = - Υ, and the reference buoyancy b★ at the w-faces, where it is the
 # discrete gradient of p★.
 
 output_dir = joinpath(@__DIR__, "output")
 
-simulation.output_writers[:fields] = JLD2Writer(model, (; 𝒜 = e.𝒜, displacement = -e.Υ, S = model.tracers.S);
+simulation.output_writers[:fields] = JLD2Writer(model, (; 𝒜, displacement = -reference_displacement(z★), S = model.tracers.S);
                                                 dir = output_dir, filename = "reference_state_fields",
-                                                schedule = TimeInterval(15), overwrite_files = true)
+                                                schedule = TimeInterval(1minute), overwrite_files = true)
 
-simulation.output_writers[:profiles] = JLD2Writer(model, (; b★ = e.b★); dir = output_dir, filename = "reference_state_profiles",
+simulation.output_writers[:profiles] = JLD2Writer(model, (; b★ = reference_buoyancy(z★)); dir = output_dir, filename = "reference_state_profiles",
                                                   schedule = TimeInterval(15), overwrite_files = true)
 
 # Volume integrals (per metre in y). Changes in ℐ are differenced cell by cell from the initial state, since
 # ℐ = cₚ₀ (θ - T₀) is much larger than its changes. ∫ 𝒲★ dV vanishes, up to round-off.
 
+ℐ = thermodynamic_operation(model, HeightIndependent(potential_enthalpy))
 ℐ₀ = CenterField(grid)
-set!(ℐ₀, e.ℐ)
+set!(ℐ₀, ℐ)
 
 budget = (𝒦  = Integral((u^2 + w^2) / 2),
-          𝒜  = Integral(e.𝒜),
-          𝒢★ = Integral(e.𝒢★),
-          Δℐ = Integral(e.ℐ - ℐ₀),
-          𝒲★ = Integral(e.𝒲★))
+          𝒜  = Integral(𝒜),
+          𝒢★ = Integral(background_gravitational_energy(model, z★)),
+          Δℐ = Integral(ℐ - ℐ₀),
+          𝒲★ = Integral(reference_work(z★)))
 
 simulation.output_writers[:budget] = JLD2Writer(model, budget; dir = output_dir, filename = "reference_state_budget",
                                                 schedule = TimeInterval(5), array_type = Array{Float64}, overwrite_files = true)
@@ -102,8 +123,9 @@ run!(simulation)
 
 # ## The reference buoyancy profile
 #
-# b★(z, t) starts as two layers. As diffusion mixes them at the interface, it forms water denser than the deep
-# layer (b < 0, blue), which settles to the bottom of the reference state: cabbeling.
+# b★(z, t) starts as two layers with a thin interface between them. As diffusion mixes them at the interface, it
+# forms water denser than the deep layer (b < 0, blue), which settles to the bottom of the reference state:
+# cabbeling.
 
 b★ = FieldTimeSeries(joinpath(output_dir, "reference_state_profiles.jld2"), "b★")
 zᶠ = znodes(b★.grid, Face())
@@ -130,7 +152,7 @@ displacement_timeseries = FieldTimeSeries(filename, "displacement")
 S_timeseries = FieldTimeSeries(filename, "S")
 times = 𝒜_timeseries.times
 
-snapshots = [findfirst(≥(t), times) for t in (2minutes, 5minutes, 10minutes)]
+snapshots = [findfirst(≥(t), times) for t in (5minutes, 10minutes, 15minutes)]
 𝒜max = maximum(interior(𝒜_timeseries))
 dmax = maximum(abs, interior(displacement_timeseries))
 
@@ -152,7 +174,7 @@ nothing #hide
 # ## Energy reservoirs
 #
 # The kinetic energy 𝒦, the available potential energy 𝒜, and the changes in the gravitational and internal
-# parts of the background potential energy 𝓑 = ℐ + 𝒢★. Their sum, the total energy, changes only through the
+# parts of the background potential energy ℬ = ℐ + 𝒢★. Their sum, the total energy, changes only through the
 # time-stepping error.
 
 series(name) = interior(FieldTimeSeries(joinpath(output_dir, "reference_state_budget.jld2"), name), 1, 1, 1, :)

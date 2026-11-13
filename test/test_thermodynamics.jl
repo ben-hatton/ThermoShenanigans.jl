@@ -1,5 +1,5 @@
 @testset "Thermodynamics" begin
-    @testset "Derivatives match ForwardDiff [$(summary(thermodynamics))]" for thermodynamics in (linear, cabbeling, coupled)
+    @testset "Derivatives match ForwardDiff [$(summary(thermodynamics))]" for thermodynamics in (linear, cabbeling, coupled, shifted)
         for (θ, S, z) in states
             ∂θ(f) = derivative(θ -> f(θ, S, thermodynamics), θ)
             ∂S(f) = derivative(S -> f(θ, S, thermodynamics), S)
@@ -65,14 +65,33 @@
 
             c, a = coupled.c, coupled.a
             @test - ∂T∂S(θ, S, 0.0, coupled) / ∂T∂θ(θ, S, 0.0, coupled) ≈ - a * θ / (c + a * S)
+
+            # With z₀ ≠ 0, the functions of z depend on z - z₀ only, and 𝒫 gains the constant g z₀
+            z₀ = reference_pressure_height(shifted)
+            for f in (exner, chemical_potential_analogue, temperature, chemical_potential, heat_capacity)
+                @test f(θ, S, z, shifted) ≈ f(θ, S, z - z₀, cabbeling)
+            end
+            @test potential_energy(θ, S, z, shifted) ≈ potential_energy(θ, S, z - z₀, cabbeling) + g * z₀
+        end
+
+        # The g of g z₀ in 𝒫 is the g in b: doubling g doubles 𝒫 - h⁰ = - b (z - z₀) + g z₀
+        @test gravitational_acceleration(cabbeling) === g
+        doubled_gravity = CabbelingBoussinesqThermodynamics(; cabbeling_coefficient = 1e-5, reference_pressure_height = -40,
+                                                            gravitational_acceleration = 2g, parameters...)
+        for (θ, S, z) in states
+            @test potential_energy(θ, S, z, doubled_gravity) - potential_enthalpy(θ, S, doubled_gravity) ≈
+                  2 * (potential_energy(θ, S, z, shifted) - potential_enthalpy(θ, S, shifted))
         end
 
         @test linear.saline_entropy_constant ≈ 8.314462618 / 31.4038218e-3
     end
 
     @testset "Float32" begin
-        thermodynamics = CabbelingBoussinesqThermodynamics(Float32; cabbeling_coefficient = 1e-5, parameters...)
+        thermodynamics = CabbelingBoussinesqThermodynamics(Float32; cabbeling_coefficient = 1e-5, reference_pressure_height = -40,
+                                                           parameters...)
         θ, S, z = 283f0, 0.035f0, -10f0
+        @test reference_pressure_height(thermodynamics) isa Float32
+        @test gravitational_acceleration(thermodynamics) isa Float32
         interface = (buoyancy,           ∂b∂θ,  ∂b∂S,  ∂²b∂θ²,  ∂²b∂θ∂S,  ∂²b∂S²,
                      potential_enthalpy, ∂h⁰∂θ, ∂h⁰∂S, ∂²h⁰∂θ², ∂²h⁰∂θ∂S, ∂²h⁰∂S²,
                      entropy,            ∂η⁰∂θ, ∂η⁰∂S, ∂²η⁰∂θ², ∂²η⁰∂θ∂S, ∂²η⁰∂S²)

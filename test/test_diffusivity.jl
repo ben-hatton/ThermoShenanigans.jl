@@ -20,8 +20,8 @@ using Oceananigans.TimeSteppers: update_state!, compute_tendencies!, compute_flu
     @testset "θ diffusivity is exactly κ_θ [$(summary(thermodynamics))]" for thermodynamics in (linear, cabbeling, coupled)
         for (θ, S, z) in states
             # π j_θ = - κ_θ cₚ ∇T + ..., and since cₚ / π = 1 / T_θ the ∇θ part of j_θ is - κ_θ ∇θ
-            @test heat_flux_prefactor(θ, S, z, thermodynamics) ≈ heat_capacity(θ, S, z, thermodynamics) / exner(θ, S, z, thermodynamics)
-            @test heat_flux_prefactor(θ, S, z, thermodynamics) * ∂T∂θ(θ, S, z, thermodynamics) ≈ 1
+            @test θ_flux_prefactor(θ, S, z, thermodynamics) ≈ heat_capacity(θ, S, z, thermodynamics) / exner(θ, S, z, thermodynamics)
+            @test θ_flux_prefactor(θ, S, z, thermodynamics) * ∂T∂θ(θ, S, z, thermodynamics) ≈ 1
         end
     end
 

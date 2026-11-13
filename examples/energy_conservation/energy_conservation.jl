@@ -9,7 +9,7 @@
 # This example demonstrates:
 #
 #   * How to build a thermodynamically consistent model with `thermodynamic_model_components`.
-#   * How to output volume integrals of `thermodynamic_diagnostics` with `Integral`.
+#   * How to output volume integrals of the thermodynamic diagnostics with `Integral`.
 #
 # Run with `julia --project=examples examples/energy_conservation/energy_conservation.jl`.
 # Output and figures are saved in `examples/energy_conservation/output`.
@@ -56,16 +56,16 @@ function run_energy_budget(grid, thermodynamics, initial_conditions, output_dir,
     set!(model; initial_conditions...)
 
     u, v, w = model.velocities
-    diagnostics = thermodynamic_diagnostics(model)
+    𝒫 = thermodynamic_operation(model, potential_energy)
     𝒫₀ = CenterField(grid)
-    set!(𝒫₀, diagnostics.𝒫)
+    set!(𝒫₀, 𝒫)
 
     budget = (𝒦ᵘ  = Integral(u^2 / 2),
               𝒦ʷ  = Integral(w^2 / 2),
-              Δ𝒫  = Integral(diagnostics.𝒫 - 𝒫₀),
-              wb  = Integral(diagnostics.wb),
-              ε   = Integral(diagnostics.ε),
-              σ_η = Integral(diagnostics.σ_η))
+              Δ𝒫  = Integral(𝒫 - 𝒫₀),
+              wb  = Integral(buoyancy_work(model)),
+              ε   = Integral(viscous_dissipation(model)),
+              σ_η = Integral(entropy_production(model)))
 
     simulation = Simulation(model; Δt, stop_time)
 

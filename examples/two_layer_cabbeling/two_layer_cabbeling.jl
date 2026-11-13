@@ -86,7 +86,7 @@ add_callback!(simulation, progress, IterationInterval(100))
 # We save θ, S, w and the temperature T, plus the horizontally averaged salinity.
 
 output_dir = joinpath(@__DIR__, "output")
-T = thermodynamic_diagnostics(model).T
+T = thermodynamic_operation(model, temperature)
 
 simulation.output_writers[:fields] = JLD2Writer(model, (; θ, S, T, w); dir = output_dir, filename = "two_layer_cabbeling",
                                                 schedule = TimeInterval(15), overwrite_files = true)

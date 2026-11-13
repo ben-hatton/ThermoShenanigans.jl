@@ -11,15 +11,30 @@
     end
 
     @testset "σ_η ≥ 0" begin
-        σ_η = computed(thermodynamic_diagnostics(model).σ_η)
+        σ_η = computed(entropy_production(model))
         @test all(≥(0), σ_η) && any(>(0), σ_η)
     end
 
-    @testset "𝒜 + 𝓑 = 𝒫 and 𝒜 ≥ 0" begin
-        e = energetics(model)
-        𝒜, 𝓑 = computed(e.𝒜), computed(e.𝓑)
-        @test 𝒜 .+ 𝓑 ≈ computed(thermodynamic_diagnostics(model).𝒫) rtol = 1e-14
+    @testset "𝒜 + ℬ = 𝒫 and 𝒜 ≥ 0" begin
+        z★ = reference_height(model)
+        𝒜, ℬ = computed(available_potential_energy(z★)), computed(background_potential_energy(model, z★))
+        @test 𝒜 .+ ℬ ≈ computed(thermodynamic_operation(model, potential_energy)) rtol = 1e-14
         @test all(≥(0), 𝒜)
+    end
+
+    @testset "∫ R★ dV = 0" begin
+        R★ = computed(reference_tendency_work(model, reference_height(model)))
+        V = cell_volumes(CenterField(model.grid))
+        @test abs(sum(R★ .* V)) < 1e-13 * sum(abs.(R★) .* V)
+    end
+
+    @testset "∫ (𝒩 + 𝒩_ℬ) dV = 0" begin
+        # The spurious mixing by the discrete advection converts ℬ into 𝒜 with no net change of 𝒫
+        _, round_off, _ = energy_tendency(model)
+        z★ = reference_height(model)
+        𝒩, 𝒩_ℬ = computed(spurious_ape_production(model, z★)), computed(spurious_bpe_production(model, z★))
+        V = cell_volumes(CenterField(model.grid))
+        @test abs(sum((𝒩 .+ 𝒩_ℬ) .* V)) < 1e-13 * round_off
     end
 
     @testset "Time step" begin

@@ -12,14 +12,29 @@ export
     # Buoyancy, closure and model components
     ThermodynamicBuoyancy, ThermodynamicDiffusivity, thermodynamic_model_components,
 
-    # Diagnostics
-    thermodynamic_diagnostics, energetics
+    # Thermodynamic diagnostics
+    thermodynamic_operation, HeightIndependent, viscous_dissipation, θ_production, buoyancy_production,
+    heating_buoyancy_production, nonlinear_buoyancy_production, entropy_production, potential_energy_conversion,
+    θ_flux, salt_flux, buoyancy_flux, buoyancy_work, buoyancy_tendency, advective_buoyancy_tendency,
 
+    # Reference state and local energetics
+    Sorting, reference_height, reference_displacement, reference_potential, reference_buoyancy, reference_work,
+    available_potential_energy, background_potential_energy, background_gravitational_energy,
+
+    # Local APE budget
+    ape_production, heating_ape_production, nonlinear_ape_production, ape_dissipation, ape_flux, ape_advection,
+    available_buoyancy_work, spurious_ape_production, reference_tendency_work,
+
+    # Local KE and BPE budgets
+    kinetic_energy, ke_advection, ke_flux, bpe_flux, bpe_advection, spurious_bpe_production
+
+using DocStringExtensions: TYPEDSIGNATURES
 using KernelAbstractions: @index, @kernel
 using Oceananigans: Oceananigans
+using Oceananigans.Advection: div_Uc, div_𝐯u, div_𝐯v, div_𝐯w, half_ϕ²
 using Oceananigans.Architectures: CPU, architecture, on_architecture
 using Oceananigans.BoundaryConditions: fill_halo_regions!
-using Oceananigans.Fields: Field, FieldStatus, compute_at!, interior, set_status!
+using Oceananigans.Fields: Field, FieldStatus, compute_at!, set_status!
 using Oceananigans.Grids: Center, Face, NegativeZDirection, XYZRegularRG, znode
 using Oceananigans.Operators: ∂xᶠᶜᶜ, ∂yᶜᶠᶜ, ∂zᶜᶜᶠ, ℑxᶠᵃᵃ, ℑyᵃᶠᵃ, ℑzᵃᵃᶠ, ℑxᶜᵃᵃ, ℑyᵃᶜᵃ, ℑzᵃᵃᶜ,
                               ℑxyᶜᶜᵃ, ℑxzᶜᵃᶜ, ℑyzᵃᶜᶜ, δxᶜᵃᵃ, δxᶠᵃᵃ, δyᵃᶜᵃ, δyᵃᶠᵃ, δzᵃᵃᶜ, δzᵃᵃᶠ,
@@ -42,14 +57,15 @@ import Oceananigans.TurbulenceClosures: diffusive_flux_x, diffusive_flux_y, diff
 import Oceananigans.BuoyancyFormulations: AbstractBuoyancyFormulation, required_tracers, get_temperature_and_salinity,
                                           buoyancy_perturbationᶜᶜᶜ, z_dot_g_bᶜᶜᶠ, ∂x_b, ∂y_b, ∂z_b
 
-include("thermodynamics.jl")
-include("buoyancy.jl")
-include("diffusivity.jl")
+include("abstract_boussinesq_thermodynamics.jl")
+include("cabbeling_boussinesq_thermodynamics.jl")
+include("thermodynamic_buoyancy.jl")
+include("thermodynamic_diffusivity.jl")
 include("production.jl")
 include("model_components.jl")
 include("diagnostics.jl")
 include("reference_state.jl")
+include("sorting.jl")
 include("energetics.jl")
-include("show_thermodynamics.jl")
 
 end # module

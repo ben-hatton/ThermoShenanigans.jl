@@ -1,62 +1,92 @@
 #=
 Lorenz reference state: the adiabatic, isohaline, volume-conserving rearrangement of the fluid that minimises
-potential energy. Since b = b(θ, S) does not depend on z, it is found by sorting the cells by buoyancy and stacking
-them from the bottom of the domain, densest first (Winters et al. 1995, J. Fluid Mech. 289).
+potential energy. The diagnostics built on it read only four model-grid fields, which a method of computing the
+reference state must fill (see `AbstractReferenceStateMethod`). Apart from z★, they are held as data arrays with the
+halos of a Field at their location, which keeps the types of the diagnostics small (see `diagnostics.jl`):
 
-On a regular grid every cell has the same volume, so the sorted column is a stack of N = Nx Ny Nz slots of
-thickness h = Δz / (Nx Ny), and b★ is piecewise constant on the slots. Then
+    z★          the reference height of each cell, at (Center, Center, Center),
+    p★(z★)      the reference potential at each cell's reference height, at (Center, Center, Center),
+    p★ᶜᶜᶜ       the reference potential at each level, at (Nothing, Nothing, Center),
+    b★ᶜᶜᶠ       δz p★ᶜᶜᶜ / Δz at the w-faces, at (Nothing, Nothing, Face),
 
-    z★ = Z★(b)     the mid-height of the band of slots whose buoyancy equals b (Winters et al. 1995, eq. 11,
-                   with a half-weighted Heaviside function), so that z★ depends on b alone,
-    p★(z) = ∫ b★ dz′ from the bottom, piecewise linear and exact on the slots.
+so that 𝒲★ = p★ᶜᶜᶜ - p★(z★) needs no knowledge of the method.
 
-On the model grid, p★ᶜᶜᶜ at level k is the mean of p★ over the centres of the Nx Ny slots that the level spans,
-and 𝒲★ = p★ᶜᶜᶜ - p★(z★). Since the cells' z★ fill the same slots (or the mid-heights of tied runs, where p★ is
-linear), Σ 𝒲★ V = 0 exactly; since p★ is convex (b★ is non-decreasing), p★ᶜᶜᶜ ≥ p★(z) by Jensen's inequality,
-so that 𝒜 ≥ 0; and a stable, horizontally uniform level has z★ = z and 𝒜 = 0.
+The reference term R★ = Ṗ★(z) - Ṗ★(z★) of the APE budget is formed in the same way from the tendency Ṗ★ = ∂p★/∂t of
+the reference potential, due to the buoyancy tendency Ḃ = ADV_b + σ_b - ∇·j_b of every cell. In the continuum,
+advection only rearranges the fluid and leaves the reference state unchanged, but the model's discrete advection
+ADV_b = - b_θ ∇·(u θ) - b_S ∇·(u S) does not, so that Ṗ★ includes it:
 
-At the model's w-faces, the reference buoyancy is b★ᶜᶜᶠ = δz p★ᶜᶜᶜ / Δz, the discrete gradient of p★ᶜᶜᶜ.
-With discrete continuity this makes ∇·(p★ u) = ℑz(w b★ᶜᶜᶠ) hold exactly in every cell.
+    Ṗ★(z★)      at each cell's reference height, at (Center, Center, Center),
+    Ṗ★ᶜᶜᶜ       at each level, at (Nothing, Nothing, Center).
 =#
+
+"""
+    AbstractReferenceStateMethod
+
+Abstract supertype of the methods that compute the Lorenz reference state. A method `M` implements
+
+* `validate_reference_state_grid(::M, grid)`, which throws an `ArgumentError` for a grid it does not support;
+* `reference_state_workspace(::M, grid)`, which returns the method's own storage (or `nothing`);
+* `compute_reference_state!(z★, state, ::M)`, which, given the computed `state.buoyancy`, fills the interior points of
+  the `Field` z★ and of the three data arrays that the diagnostics read:
+  - `z★`, the reference height of each cell;
+  - `state.parcel_reference_potential`, p★(z★) in each cell;
+  - `state.reference_potential`, p★ at each level, at (Nothing, Nothing, Center);
+  - `state.reference_buoyancy`, b★ = δz p★ / Δz at the interior w-faces (w = 0 on the boundary faces, so the
+    boundary values only need to be finite).
+
+Here p★ = ∫ b★ dz is the reference potential of the method's reference column, and the per-level and per-cell
+values of p★ must be consistent with each other, so that 𝒲★ = p★ᶜᶜᶜ - p★(z★) integrates to zero and 𝒜 ≥ 0.
+A method that bins the buoyancy, rather than sorting it, satisfies 𝒜 ≥ 0 only to within the bin width.
+
+For the reference term R★ of the APE budget, a method also implements
+
+* `reference_tendency_workspace(::M, grid)`, which returns the storage of the tendency step (or `nothing`);
+* `compute_reference_tendency!(parcel_tendency, tendency, ::M)`, which, given the computed reference state and the
+  computed buoyancy tendency `tendency.buoyancy_tendency`, fills the interior points of
+  - `parcel_tendency`, Ṗ★(z★) in each cell;
+  - `tendency.reference_tendency`, Ṗ★ at each level, at (Nothing, Nothing, Center),
+
+  consistently with each other, so that R★ = Ṗ★ᶜᶜᶜ - Ṗ★(z★) integrates to zero.
+"""
+abstract type AbstractReferenceStateMethod end
 
 """
     ReferenceState
 
-Operand of the reference height `Field` z★ returned by [`energetics`](@ref). Its `compute!` sorts the buoyancy
-and fills z★, the reference potential p★ at cell centres and the reference buoyancy b★ at w-faces, so that one
-sort serves every diagnostic built on z★. Fields:
+Operand of the reference height `Field` z★ returned by [`reference_height`](@ref). Its `compute!` computes the reference
+state with `method`, so that one computation serves every diagnostic built on z★. Apart from `method`,
+`buoyancy_formulation` and `workspace`, its fields are data arrays, with the halos of a `Field` at their location:
 
-* `buoyancy`: the buoyancy b at (Center, Center, Center), as a computed `Field`
-* `permutation`: the linear cell index of each slot of the sorted column, densest first
-* `sorted_buoyancy`: b★ on the slots
-* `slot_potential`: p★ at the bottom face of each slot
-* `sorted_height`: z★ on the slots
-* `reference_potential`: p★ averaged over each level, at (Nothing, Nothing, Center)
-* `reference_buoyancy`: b★ at w-faces, at (Nothing, Nothing, Face)
-* `bottom`: height of the bottom of the domain
-* `slot_thickness`: thickness h = Δz / (Nx Ny) of each slot
+* `method`: the [`AbstractReferenceStateMethod`](@ref)
+* `buoyancy_formulation`: the `ThermodynamicBuoyancy` of the model
+* `tracers`: the data of the tracers of the model, from which b is computed
+* `buoyancy`: the buoyancy b at (Center, Center, Center)
+* `parcel_reference_potential`: p★(z★), the reference potential at each cell's reference height
+* `reference_potential`: p★ at each level, at (Nothing, Nothing, Center)
+* `reference_buoyancy`: b★ = δz p★ / Δz at w-faces, at (Nothing, Nothing, Face)
+* `workspace`: storage specific to `method`
 """
-struct ReferenceState{B, P, V, R, F, FT}
+struct ReferenceState{M, BF, T, B, H, R, F, W}
+    method :: M
+    buoyancy_formulation :: BF
+    tracers :: T
     buoyancy :: B
-    permutation :: P
-    sorted_buoyancy :: V
-    slot_potential :: V
-    sorted_height :: V
+    parcel_reference_potential :: H
     reference_potential :: R
     reference_buoyancy :: F
-    bottom :: FT
-    slot_thickness :: FT
+    workspace :: W
 end
 
-Base.summary(::ReferenceState) = "ReferenceState"
+Base.summary(state::ReferenceState) = string("ReferenceState with ", summary(state.method))
 
 const ReferenceHeightField = Field{<:Any, <:Any, <:Any, <:ReferenceState}
 
 """
     ReferenceProfile
 
-Operand of the p★ and b★ profile `Field`s, which share their data with the `ReferenceState` of z★.
-Computing a profile computes z★, so that a profile handed to an output writer on its own is never stale.
+Operand of the `Field`s, such as p★ and b★, that share their data arrays with the `ReferenceState` of z★.
+Computing one computes z★, so that a profile handed to an output writer on its own is never stale.
 """
 struct ReferenceProfile{Z}
     reference_height :: Z
@@ -66,133 +96,163 @@ Base.summary(::ReferenceProfile) = "ReferenceProfile"
 
 const ReferenceProfileField = Field{<:Any, <:Any, <:Any, <:ReferenceProfile}
 
+#####
+##### Computing the reference state
+#####
+
+#=
+The reference state and its tendency hold the model's own objects, and compute b and Ḃ into data arrays, rather
+than holding operations over the model fields: like the diagnostics of Oceanostics.jl, every operation is then only
+one level deep, which keeps the types, and so the compile times, of the diagnostics built on z★ small.
+=#
+
+@kernel function _compute_buoyancy!(buoyancy, grid, buoyancy_formulation, tracers)
+    i, j, k = @index(Global, NTuple)
+    @inbounds buoyancy[i, j, k] = buoyancy_perturbationᶜᶜᶜ(i, j, k, grid, buoyancy_formulation, tracers)
+end
+
+@kernel function _compute_buoyancy_tendency!(buoyancy_tendency, grid, advection, clock, fields, parameters)
+    i, j, k = @index(Global, NTuple)
+    @inbounds buoyancy_tendency[i, j, k] = total_buoyancy_tendencyᶜᶜᶜ(i, j, k, grid, advection, clock, fields, parameters)
+end
+
 function compute!(profile::ReferenceProfileField, time = nothing)
     compute_at!(profile.operand.reference_height, time)
     set_status!(profile.status, time)
     return profile
 end
 
-# p★(z) on the sorted column: P★ at the bottom face of the slot containing z, plus b★ across the rest of the slot.
-# p★ is continuous, so a height on a slot face gives the same value from either neighbouring slot.
-@inline function reference_potential_at(z, sorted_buoyancy, slot_potential, bottom, slot_thickness)
-    N = length(sorted_buoyancy)
-    n = clamp(unsafe_trunc(Int, (z - bottom) / slot_thickness) + 1, 1, N)
-    return @inbounds slot_potential[n] + sorted_buoyancy[n] * (z - bottom - (n - 1) * slot_thickness)
-end
-
-# b of each cell, flattened in linear order
-@kernel function _gather_buoyancy!(flat_buoyancy, buoyancy, cells)
-    n = @index(Global)
-    @inbounds flat_buoyancy[n] = buoyancy[cells[n]]
-end
-
-# b★ on the slots, b★[n] = b[perm[n]]
-@kernel function _permute_buoyancy!(sorted_buoyancy, flat_buoyancy, permutation)
-    n = @index(Global)
-    @inbounds sorted_buoyancy[n] = flat_buoyancy[permutation[n]]
-end
-
-# z★ of the cell that fills slot n
-@kernel function _scatter_reference_height!(reference_height, sorted_height, permutation, cells)
-    n = @index(Global)
-    @inbounds reference_height[cells[permutation[n]]] = sorted_height[n]
-end
-
-# b★ = δz p★ / Δz at w-faces; on the boundary faces, where w = 0, b★ is the boundary slot's
-@kernel function _compute_reference_buoyancy!(reference_buoyancy, grid, reference_potential, sorted_buoyancy)
-    k = @index(Global)
-    Nz = size(grid, 3)
-    N = length(sorted_buoyancy)
-    @inbounds reference_buoyancy[1, 1, k] = ifelse(k == 1, sorted_buoyancy[1],
-                                            ifelse(k == Nz + 1, sorted_buoyancy[N],
-                                                   (reference_potential[1, 1, min(k, Nz)] - reference_potential[1, 1, max(k - 1, 1)]) /
-                                                   Δzᶜᶜᶠ(1, 1, k, grid)))
-end
+# Fill the halos of the data of a field at (Center, Center, Center) with the boundary conditions of z★
+fill_center_halo_regions!(data, z★) =
+    fill_halo_regions!(data, z★.boundary_conditions, z★.indices, (Center(), Center(), Center()), z★.grid)
 
 function compute!(z★::ReferenceHeightField, time = nothing)
     state = z★.operand
     grid = z★.grid
-    arch = architecture(grid)
-    N = length(state.permutation)
-    h = state.slot_thickness
-
-    compute_at!(state.buoyancy, time)
-    cells = CartesianIndices(size(grid))
-
-    # Sort the cells by buoyancy, densest (lowest b) first; sorted_height holds the flattened b until it is overwritten
-    flat_buoyancy = state.sorted_height
-    launch!(arch, grid, (N,), _gather_buoyancy!, flat_buoyancy, state.buoyancy.data, cells)
-    sortperm!(state.permutation, flat_buoyancy)
-    launch!(arch, grid, (N,), _permute_buoyancy!, state.sorted_buoyancy, flat_buoyancy, state.permutation)
-
-    # P★ at the bottom face of each slot, h Σ_{m<n} b★[m]
-    b★ = state.sorted_buoyancy
-    P★ = state.slot_potential
-    cumsum!(P★, b★)
-    P★ .= h .* (P★ .- b★)
-
-    # A tied run of slots n₁…n₂ fills [(n₁ - 1) h, n₂ h] above the bottom, and all of its cells take the mid-height.
-    # The run's bottom is the last run start at or below n (a running maximum) and its top the first run end at or
-    # above n (a running minimum from the top).
-    slots = 1:N
-    starts = (slots .== 1) .| (b★ .!= circshift(b★, 1))
-    ends = (slots .== N) .| (b★ .!= circshift(b★, -1))
-    run_bottom = accumulate(max, ifelse.(starts, (slots .- 1) .* h, -h))
-    run_top = reverse(accumulate(min, reverse(ifelse.(ends, slots .* h, (N + 1) * h))))
-    state.sorted_height .= state.bottom .+ (run_bottom .+ run_top) ./ 2
-
-    launch!(arch, grid, (N,), _scatter_reference_height!, z★.data, state.sorted_height, state.permutation, cells)
-
-    # p★ᶜᶜᶜ: the mean over each level's slots of p★ at the slot centres, P★ + b★ h / 2
-    Nx, Ny, Nz = size(grid)
-    slot_centre_potential = reshape(P★ .+ b★ .* (h / 2), Nx * Ny, Nz)
-    interior(state.reference_potential) .= reshape(sum(slot_centre_potential; dims = 1) ./ (Nx * Ny), 1, 1, Nz)
-
-    launch!(arch, grid, (Nz + 1,), _compute_reference_buoyancy!, state.reference_buoyancy.data, grid, state.reference_potential.data, b★)
-
+    launch!(architecture(grid), grid, :xyz, _compute_buoyancy!, state.buoyancy, grid, state.buoyancy_formulation,
+            state.tracers)
+    fill_center_halo_regions!(state.buoyancy, z★)
+    compute_reference_state!(z★, state, state.method)
     fill_halo_regions!(z★)
+    fill_center_halo_regions!(state.parcel_reference_potential, z★)
     set_status!(z★.status, time)
-
     return z★
 end
 
-validate_reference_state_grid(grid::XYZRegularRG) = nothing
-validate_reference_state_grid(grid) =
-    throw(ArgumentError("The reference state is only implemented for a RectilinearGrid that is regular in x, y and z, " *
-                        "without an immersed boundary, but got a $(summary(grid))."))
-
 """
-    reference_height(buoyancy)
+    reference_height(model; method = Sorting())
 
-Return the reference height z★ of each cell, as a `Field` at (Center, Center, Center) on the grid of `buoyancy`,
-a buoyancy `Field` or operation at (Center, Center, Center). Its operand is a [`ReferenceState`](@ref), and
-`compute!` re-sorts the buoyancy.
+Return the reference height z★ of each cell of a model built with [`thermodynamic_model_components`](@ref), as a
+`Field` at (Center, Center, Center). Its operand is a [`ReferenceState`](@ref), and its `compute!` computes the
+Lorenz reference state with `method`, an [`AbstractReferenceStateMethod`](@ref). The diagnostics of the reference
+state and the local APE budget take z★: pass the same z★ to each, so that they share one computation of the
+reference state per time. With [`Sorting`](@ref), the grid must be a `RectilinearGrid` regular in x, y and z.
+
+```jldoctest
+julia> using Oceananigans, ThermoShenanigans
+
+julia> grid = RectilinearGrid(size = (4, 8), x = (0, 1), z = (-1, 0), topology = (Periodic, Flat, Bounded));
+
+julia> thermodynamics = CabbelingBoussinesqThermodynamics(thermal_expansion = 2e-4, haline_contraction = 0.8,
+                                                          reference_temperature = 283, reference_salinity = 0.035,
+                                                          reference_heat_capacity = 4000);
+
+julia> components = thermodynamic_model_components(grid, thermodynamics; viscosity = 1e-6, thermal_diffusivity = 1e-7,
+                                                   salt_diffusivity = 1e-7);
+
+julia> model = NonhydrostaticModel(grid; tracers = (:θ, :S), components...);
+
+julia> set!(model, θ = (x, z) -> 283 - z, S = 0.035);
+
+julia> z★ = reference_height(model);
+
+julia> 𝒜 = Field(available_potential_energy(z★));
+
+julia> round(maximum(𝒜), sigdigits = 3) # an unstable column has available potential energy
+0.000751
+```
 """
-function reference_height(buoyancy)
-    grid = buoyancy.grid
-    validate_reference_state_grid(grid)
+function reference_height(model; method = Sorting())
+    grid = model.grid
+    validate_reference_state_grid(method, grid)
 
-    arch = architecture(grid)
-    FT = eltype(grid)
-    Nx, Ny, Nz = size(grid)
-    N = Nx * Ny * Nz
-
-    cpu_grid = on_architecture(CPU(), grid)
-    bottom = convert(FT, znode(1, 1, 1, cpu_grid, Center(), Center(), Face()))
-    slot_thickness = convert(FT, Δzᶜᶜᶜ(1, 1, 1, cpu_grid) / (Nx * Ny))
-
-    sorted_vector() = on_architecture(arch, zeros(FT, N))
-    reference_potential = Field{Nothing, Nothing, Center}(grid)
-    reference_buoyancy = Field{Nothing, Nothing, Face}(grid)
-
-    state = ReferenceState(Field(buoyancy), on_architecture(arch, zeros(Int, N)),
-                           sorted_vector(), sorted_vector(), sorted_vector(),
-                           reference_potential, reference_buoyancy, bottom, slot_thickness)
+    state = ReferenceState(method, model.buoyancy.formulation, field_data(model.tracers), field_data_at(Center, Center, Center, grid),
+                           field_data_at(Center, Center, Center, grid), field_data_at(Nothing, Nothing, Center, grid),
+                           field_data_at(Nothing, Nothing, Face, grid), reference_state_workspace(method, grid))
 
     return Field{Center, Center, Center}(grid; operand = state, status = FieldStatus())
 end
 
-# Profile Fields that share the data of the reference state and recompute z★ when computed
-function reference_profile(z★, profile::Field{LX, LY, LZ}) where {LX, LY, LZ}
-    return Field{LX, LY, LZ}(profile.grid; data = profile.data, operand = ReferenceProfile(z★), status = FieldStatus())
+# The data array, with halos, of a Field at (LX, LY, LZ)
+field_data_at(LX, LY, LZ, grid) = Field{LX, LY, LZ}(grid).data
+
+# A profile Field at (LX, LY, LZ) that shares `data` with the reference state, and recomputes z★ when computed
+reference_profile(z★, data, LX, LY, LZ) =
+    Field{LX, LY, LZ}(z★.grid; data, operand = ReferenceProfile(z★), status = FieldStatus())
+
+#####
+##### The tendency of the reference state
+#####
+
+"""
+    ReferenceTendency
+
+Operand of the `Field` Ṗ★(z★), the tendency of the reference potential at each cell's reference height, used by
+the reference term R★ of [`reference_tendency_work`](@ref). Its `compute!` computes the reference state, the
+buoyancy tendency Ḃ = ADV_b + σ_b - ∇·j_b of the model, including its discrete advection, and then the tendency of
+the reference state with the method of the reference state. Fields:
+
+* `reference_height`: the reference height `Field` z★, whose operand is a [`ReferenceState`](@ref)
+* `advection`, `clock`, `fields` and `parameters`: the model's advection schemes, clock, the data of its velocities
+  and tracers, and the parameters of the production terms, from which Ḃ is computed
+* `buoyancy_tendency`: the data of Ḃ at (Center, Center, Center)
+* `reference_tendency`: the data of Ṗ★ at each level, at (Nothing, Nothing, Center)
+* `workspace`: storage specific to the method
+"""
+struct ReferenceTendency{Z, A, C, F, P, B, R, W}
+    reference_height :: Z
+    advection :: A
+    clock :: C
+    fields :: F
+    parameters :: P
+    buoyancy_tendency :: B
+    reference_tendency :: R
+    workspace :: W
+end
+
+Base.summary(tendency::ReferenceTendency) =
+    string("ReferenceTendency with ", summary(tendency.reference_height.operand.method))
+
+const ReferenceTendencyField = Field{<:Any, <:Any, <:Any, <:ReferenceTendency}
+
+reference_tendency_workspace(method, grid) = nothing
+
+function compute!(parcel_tendency::ReferenceTendencyField, time = nothing)
+    tendency = parcel_tendency.operand
+    z★ = tendency.reference_height
+    compute_at!(z★, time)
+    grid = z★.grid
+    launch!(architecture(grid), grid, :xyz, _compute_buoyancy_tendency!, tendency.buoyancy_tendency, grid,
+            tendency.advection, tendency.clock, tendency.fields, tendency.parameters)
+    compute_reference_tendency!(parcel_tendency, tendency, z★.operand.method)
+    fill_halo_regions!(parcel_tendency)
+    set_status!(parcel_tendency.status, time)
+    return parcel_tendency
+end
+
+"""
+    reference_tendency(model, z★)
+
+Return the tendency Ṗ★(z★) of the reference potential at each cell's reference height, as a `Field` at
+(Center, Center, Center), due to the buoyancy tendency Ḃ = ADV_b + σ_b - ∇·j_b of `model`, for the reference
+height `Field` z★ returned by [`reference_height`](@ref). Its operand is a [`ReferenceTendency`](@ref), whose
+`reference_tendency` holds Ṗ★ at each level.
+"""
+function reference_tendency(model, z★)
+    grid = z★.grid
+    method = z★.operand.method
+    tendency = ReferenceTendency(z★, model.advection, model.clock, velocities_and_tracers(model), production_parameters(model),
+                                 field_data_at(Center, Center, Center, grid), field_data_at(Nothing, Nothing, Center, grid),
+                                 reference_tendency_workspace(method, grid))
+    return Field{Center, Center, Center}(grid; operand = tendency, status = FieldStatus())
 end

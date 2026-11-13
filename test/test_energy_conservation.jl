@@ -54,7 +54,7 @@ using ThermoShenanigans: consistent_buoyancyᶜᶜᶠ
             set!(model, u = (x, y, z) -> 0.1 * sin(2π * x) * cos(π * z), θ = (x, y, z) -> 283 + 2 * tanh(10 * (z + 0.5)),
                         S = (x, y, z) -> 0.035 - 1e-3 * tanh(10 * (z + 0.5)))
             u, v, w = model.velocities
-            𝒫 = thermodynamic_diagnostics(model).𝒫
+            𝒫 = thermodynamic_operation(model, potential_energy)
             𝒫₀ = CenterField(section)
             set!(𝒫₀, 𝒫)
 

@@ -4,7 +4,7 @@ using Oceananigans.Fields: location
 using Oceananigans.Operators: volume
 using Oceananigans.TimeSteppers: update_state!, compute_tendencies!
 using Oceananigans.TurbulenceClosures: ∇_dot_qᶜ, diffusive_flux_x, diffusive_flux_y, diffusive_flux_z
-using ThermoShenanigans: barodiffusion_coefficient, heat_flux_prefactor
+using ThermoShenanigans: barodiffusion_coefficient, θ_flux_prefactor
 
 # TEST_GROUP=basic (the default) runs a quick core set; TEST_GROUP=all runs the full suite
 const test_group = get(ENV, "TEST_GROUP", "basic")
@@ -27,6 +27,9 @@ parameters = (thermal_expansion = 2e-4, haline_contraction = 0.8, reference_temp
 linear    = CabbelingBoussinesqThermodynamics(; parameters...)
 cabbeling = CabbelingBoussinesqThermodynamics(; cabbeling_coefficient = 1e-5, parameters...)
 
+# As `cabbeling`, but with the reference pressure P₀ at z₀ = -40 rather than at z = 0
+shifted = CabbelingBoussinesqThermodynamics(; cabbeling_coefficient = 1e-5, reference_pressure_height = -40, parameters...)
+
 # Test-only thermodynamics with θ–S coupling, h⁰ = c θ + a θ S, η⁰ = c ln θ - S (ln S - 1), b = gα θ.
 # T_S and the cross term in j_θ vanish for CabbelingBoussinesqThermodynamics, so this exercises the general formulas.
 struct CoupledTestThermodynamics <: AbstractBoussinesqThermodynamics
@@ -37,7 +40,8 @@ end
 
 import ThermoShenanigans: buoyancy, ∂b∂θ, ∂b∂S, ∂²b∂θ², ∂²b∂θ∂S, ∂²b∂S²,
                           potential_enthalpy, ∂h⁰∂θ, ∂h⁰∂S, ∂²h⁰∂θ², ∂²h⁰∂θ∂S, ∂²h⁰∂S²,
-                          entropy, ∂η⁰∂θ, ∂η⁰∂S, ∂²η⁰∂θ², ∂²η⁰∂θ∂S, ∂²η⁰∂S²
+                          entropy, ∂η⁰∂θ, ∂η⁰∂S, ∂²η⁰∂θ², ∂²η⁰∂θ∂S, ∂²η⁰∂S²,
+                          reference_pressure_height, gravitational_acceleration
 
 for f in (:∂b∂S, :∂²b∂θ², :∂²b∂θ∂S, :∂²b∂S², :∂²h⁰∂θ², :∂²h⁰∂S², :∂²η⁰∂θ∂S)
     @eval $f(θ, S, ::CoupledTestThermodynamics) = zero(θ)
@@ -54,6 +58,9 @@ entropy(θ, S, thermodynamics::CoupledTestThermodynamics)            = thermodyn
 ∂η⁰∂S(θ, S, thermodynamics::CoupledTestThermodynamics)              = - log(S)
 ∂²η⁰∂θ²(θ, S, thermodynamics::CoupledTestThermodynamics)            = - thermodynamics.c / θ^2
 ∂²η⁰∂S²(θ, S, thermodynamics::CoupledTestThermodynamics)            = - 1 / S
+
+reference_pressure_height(::CoupledTestThermodynamics)  = 0.0
+gravitational_acceleration(::CoupledTestThermodynamics) = 9.81
 
 coupled = CoupledTestThermodynamics(4000, 100, 9.81 * 2e-4)
 
@@ -85,6 +92,31 @@ component_model(grid, thermo; tracers = (:θ, :S), momentum_advection = Centered
     NonhydrostaticModel(grid; tracers, momentum_advection, boundary_conditions,
                         thermodynamic_model_components(grid, thermo; viscosity = 1e-3, thermal_diffusivity = κ_θ,
                                                        salt_diffusivity = 1e-4, model_kwargs...)...)
+
+# Models on the test grid, z ∈ (-1, 0) with z₀ = 0, and on that grid translated up by `shift`, with z₀ = `shift` (the
+# same dynamics) and with z₀ = 0 (different dynamics), all in the same smooth state
+function translated_models(; shift = 10)
+    models = map(((0, 0), (shift, shift), (shift, 0))) do (top, z₀)
+        grid = RectilinearGrid(size = (6, 6, 6), x = (0, 1), y = (0, 1), z = (top - 1, top), topology = (Bounded, Bounded, Bounded))
+        thermodynamics = CabbelingBoussinesqThermodynamics(; cabbeling_coefficient = 1e-5, reference_pressure_height = z₀,
+                                                           parameters...)
+        component_model(grid, thermodynamics)
+    end
+
+    reference = first(models)
+    U(x, y, z) = 1e-2 * sin(2π * x) * cos(π * y) * cos(π * z)
+    θᵢ(x, y, z) = 283 + sin(2π * x) * sin(π * y) + z
+    Sᵢ(x, y, z) = 0.035 + 1e-3 * cos(2π * x) * cos(π * z)
+    set!(reference, u = U, v = U, θ = θᵢ, S = Sᵢ)
+
+    # The same values rather than the same functions of z - top, so that the translated states are identical
+    values = map(field -> Array(interior(field)), merge(reference.velocities, reference.tracers))
+    for model in models[2:end]
+        set!(model; values...)
+    end
+
+    return models
+end
 
 # Prescribed fluxes of θ and S at the top and bottom (positive upwards), and a passive tracer c
 const flux_bc_values = (θ = (top = 1e-4, bottom = -2e-4), S = (top = -3e-6, bottom = 1e-6))
@@ -152,8 +184,8 @@ function energy_tendency(model)
     compute_tendencies!(model, [])
     G = model.timestepper.Gⁿ
     u, v, w = model.velocities
-    d = thermodynamic_diagnostics(model)
-    π, m, wb, ε = map(field, (d.π, d.m, d.wb, d.ε))
+    π, m = field(thermodynamic_operation(model, exner)), field(thermodynamic_operation(model, chemical_potential_analogue))
+    wb, ε = field(buoyancy_work(model)), field(viscous_dissipation(model))
 
     kinetic = integral(*, u, G.u) + integral(*, v, G.v) + integral(*, w, G.w)
     potential, round_off = integral(*, π, G.θ), integral((a, b) -> abs(a * b), π, G.θ)
