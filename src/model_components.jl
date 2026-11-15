@@ -2,10 +2,10 @@
 $(TYPEDSIGNATURES)
 
 Return the θ forcing σ_θ = [ε - j_θ·∇π - j_S·∇m] / π of a model with the closure `closure`, a pair of a viscous closure
-and a [`ThermodynamicDiffusivity`](@ref) in either order, and the buoyancy `buoyancy`, a
+and a [`ThermodynamicDiffusivity`](@ref) in either order, and the buoyancy formulation `buoyancy_formulation`, a
 [`ThermodynamicBuoyancy`](@ref). σ_θ makes the potential energy gain exactly the kinetic energy lost to viscosity
-when the model is built with the same `closure` and `buoyancy`. It evaluates ε without closure fields, so that the
-viscous closure must not need any. Other θ forcings are passed with σ_θ in a tuple, `forcing = (; θ = (σ_θ, F_θ))`,
+when the model is built with the same `closure` and `buoyancy_formulation`. It evaluates ε without closure fields, so
+that the viscous closure must not need any. Other θ forcings are passed with σ_θ in a tuple, `forcing = (; θ = (σ_θ, F_θ))`,
 which Oceananigans adds to the θ tendency as `MultipleForcings`.
 
 ```jldoctest
@@ -31,8 +31,8 @@ julia> summary(model.forcing.θ)
 "MultipleForcings with 2 forcings"
 ```
 """
-θ_production_forcing(closure, buoyancy) =
-    Forcing(θ_productionᶜᶜᶜ; discrete_form = true, parameters = production_parameters(closure, buoyancy))
+θ_production_forcing(closure, buoyancy_formulation) =
+    Forcing(θ_productionᶜᶜᶜ; discrete_form = true, parameters = production_parameters(closure, buoyancy_formulation))
 
 """
     thermodynamic_model_components(grid, thermodynamics; viscosity, thermal_diffusivity, salt_diffusivity,
@@ -53,8 +53,8 @@ A model is built in either of two ways:
   Julia keeps only the last of two `forcing` keywords, so that a `forcing` given to the model constructor next to
   these components drops either σ_θ or the user forcing;
 * by hand, passing a closure, a [`ThermodynamicBuoyancy`](@ref) and the θ forcing
-  `θ_production_forcing(closure, buoyancy)`, with any other θ forcing next to it, to `NonhydrostaticModel`, as in
-  the example of [`θ_production_forcing`](@ref).
+  `θ_production_forcing(closure, buoyancy_formulation)`, with any other θ forcing next to it, to
+  `NonhydrostaticModel`, as in the example of [`θ_production_forcing`](@ref).
 
 Either way, energy is conserved only if σ_θ is built from the same closure and buoyancy as the model. Any other θ
 forcing F_θ changes the energy by ∫ π F_θ dV.
@@ -88,18 +88,18 @@ julia> summary(model.forcing.θ)
 function thermodynamic_model_components(grid, thermodynamics; viscosity, thermal_diffusivity, salt_diffusivity,
                                         forcing = NamedTuple(), consistent = true, buoyancy_kwargs...)
     FT = eltype(grid)
-    buoyancy = ThermodynamicBuoyancy(grid, thermodynamics; buoyancy_kwargs...)
+    buoyancy_formulation = ThermodynamicBuoyancy(grid, thermodynamics; buoyancy_kwargs...)
 
     if consistent
         closure = (ScalarDiffusivity(FT; ν = viscosity),
                    ThermodynamicDiffusivity(FT; thermal_diffusivity, salt_diffusivity))
-        σ_θ = θ_production_forcing(closure, buoyancy)
+        σ_θ = θ_production_forcing(closure, buoyancy_formulation)
         θ_forcing = haskey(forcing, :θ) ? combine_forcings(forcing.θ, σ_θ) : σ_θ
-        return (; buoyancy, closure, forcing = merge(forcing, (; θ = θ_forcing)))
+        return (; buoyancy = buoyancy_formulation, closure, forcing = merge(forcing, (; θ = θ_forcing)))
     else
-        κ = buoyancy isa ConstantSalinityThermodynamicBuoyancy ? (; θ = thermal_diffusivity) :
+        κ = buoyancy_formulation isa ConstantSalinityThermodynamicBuoyancy ? (; θ = thermal_diffusivity) :
                                                                 (; θ = thermal_diffusivity, S = salt_diffusivity)
-        return (; buoyancy, closure = ScalarDiffusivity(FT; ν = viscosity, κ), forcing)
+        return (; buoyancy = buoyancy_formulation, closure = ScalarDiffusivity(FT; ν = viscosity, κ), forcing)
     end
 end
 

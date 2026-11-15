@@ -120,6 +120,6 @@ ThermoShenanigans.jl is an extension to Oceananigans.jl that implements generic 
 - One name, one function: never bind the same local name to different generated functions.
 - @eval only for x/y/z triplets, with the generated names listed in a comment above the loop.
 - Kernel function, docstring and constructor for a diagnostic sit together.
-- Public constructors validate their model and throw an ArgumentError naming the fix.
+- Diagnostics do not validate their model; do not add model checks unless asked.
 - Before writing a kernel, check whether Oceananigans or Oceanostics has it, and cite the file and version ported from.
   
