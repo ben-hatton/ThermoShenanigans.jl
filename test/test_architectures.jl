@@ -99,57 +99,6 @@ function comparison_models(arch, FT)
     return device, cpu
 end
 
-@testset "Every exported diagnostic is compared between architectures" begin
-    # Exported names that are not diagnostics: types, thermodynamic functions f(θ, S, thermodynamics) and
-    # f(θ, S, z, thermodynamics), and the constructor of the model components
-    thermodynamics_type = typeof(cabbeling)
-    is_thermodynamic_function(f) = hasmethod(f, Tuple{Float64, Float64, thermodynamics_type}) ||
-                                   hasmethod(f, Tuple{Float64, Float64, Float64, thermodynamics_type})
-    exported = filter(name -> name != :ThermoShenanigans, names(ThermoShenanigans))
-    exported_values = map(name -> getproperty(ThermoShenanigans, name), exported)
-    is_diagnostic = map(value -> !(value isa Type || value === thermodynamic_model_components ||
-                                   is_thermodynamic_function(value)), exported_values)
-
-    compared = (reference_height, thermodynamic_operation, model_diagnostics..., model_fluxes...,
-                reference_state_diagnostics..., reference_diagnostics..., reference_fluxes...)
-    @test Set(exported[is_diagnostic]) == Set(nameof.(compared))
-end
-
-# On GPUs, every exported diagnostic after a time step. On the CPU, the main diagnostics after a time step in Float64, and
-# a few without a time step in Float32, which keeps compilation short; the energetics tests check every diagnostic on
-# the CPU in Float64.
-@testset "Architectures [$(summary(arch)), $FT]" for arch in archs, FT in (Float64, Float32)
-    full = FT == Float64 || arch isa GPU
-    model = architecture_model(arch, FT; step = full)
-    @test model.closure[2] isa ThermodynamicDiffusivity{FT}
-
-    if arch isa GPU
-        # The values in Float64 are compared with those on the CPU in "GPU diagnostics match the CPU"
-        @testset "$label" for (label, diagnostic) in exported_diagnostics(model)
-            @test all(isfinite, diagnostic_values(diagnostic))
-        end
-
-        reference = architecture_model(CPU(), FT)
-        for name in (:θ, :S)
-            @test Array(interior(model.tracers[name])) ≈ interior(reference.tracers[name])
-        end
-    else
-        thermodynamic_functions = full ? (potential_energy, temperature, exner, chemical_potential_analogue, chemical_potential) :
-                                         (temperature,)
-        for f in thermodynamic_functions
-            @test all(isfinite, computed(thermodynamic_operation(model, f)))
-        end
-        productions = full ? (viscous_dissipation, θ_production, buoyancy_production, nonlinear_buoyancy_production,
-                              entropy_production, potential_energy_conversion, buoyancy_work) : (θ_production, entropy_production)
-        for diagnostic in productions
-            @test all(isfinite, computed(diagnostic(model)))
-        end
-        for flux in (full ? (θ_flux, salt_flux, buoyancy_flux) : (θ_flux,))
-            @test all(isfinite, computed(flux(model).z))
-        end
-    end
-end
-
 # The prognostic fields and every exported diagnostic of `device` against those of `cpu`, one testset per diagnostic
 function test_architectures_match(device, cpu)
     device_fields, cpu_fields = merge(device.velocities, device.tracers), merge(cpu.velocities, cpu.tracers)
@@ -172,14 +121,67 @@ function test_architectures_match(device, cpu)
     end
 end
 
-#=
-Float64 only: in Float32, π ≈ cₚ = 4000 J kg⁻¹ K⁻¹ is resolved to 2.4 × 10⁻⁴ J kg⁻¹ K⁻¹, while π differs between
-neighbouring cells of `architecture_model` by about 5 × 10⁻⁴ J kg⁻¹ K⁻¹ vertically and 1.5 × 10⁻⁵ J kg⁻¹ K⁻¹
-horizontally, so that the diagnostics formed from these differences (such as σ_θ and j_θ·∇π) are dominated by
-round-off, which differs between architectures. The Float32 diagnostics on the GPU are checked to be finite above.
-=#
-if test_gpu
-    @testset "GPU diagnostics match the CPU [Float64]" begin
-        test_architectures_match(comparison_models(GPU(), Float64)...)
+function test_architectures()
+    @testset "Every exported diagnostic is compared between architectures" begin
+        # Exported names that are not diagnostics: types, thermodynamic functions f(θ, S, thermodynamics) and
+        # f(θ, S, z, thermodynamics), and the constructor of the model components
+        thermodynamics_type = typeof(cabbeling)
+        is_thermodynamic_function(f) = hasmethod(f, Tuple{Float64, Float64, thermodynamics_type}) ||
+                                       hasmethod(f, Tuple{Float64, Float64, Float64, thermodynamics_type})
+        exported = filter(name -> name != :ThermoShenanigans, names(ThermoShenanigans))
+        exported_values = map(name -> getproperty(ThermoShenanigans, name), exported)
+        is_diagnostic = map(value -> !(value isa Type || value === thermodynamic_model_components ||
+                                       is_thermodynamic_function(value)), exported_values)
+
+        compared = (reference_height, thermodynamic_operation, model_diagnostics..., model_fluxes...,
+                    reference_state_diagnostics..., reference_diagnostics..., reference_fluxes...)
+        @test Set(exported[is_diagnostic]) == Set(nameof.(compared))
+    end
+
+    # On GPUs, every exported diagnostic after a time step. On the CPU, the main diagnostics after a time step in Float64, and
+    # a few without a time step in Float32, which keeps compilation short; the energetics tests check every diagnostic on
+    # the CPU in Float64.
+    @testset "Architectures [$(summary(arch)), $FT]" for arch in archs, FT in (Float64, Float32)
+        full = FT == Float64 || arch isa GPU
+        model = architecture_model(arch, FT; step = full)
+        @test model.closure[2] isa ThermodynamicDiffusivity{FT}
+
+        if arch isa GPU
+            # The values in Float64 are compared with those on the CPU in "GPU diagnostics match the CPU"
+            @testset "$label" for (label, diagnostic) in exported_diagnostics(model)
+                @test all(isfinite, diagnostic_values(diagnostic))
+            end
+
+            reference = architecture_model(CPU(), FT)
+            for name in (:θ, :S)
+                @test Array(interior(model.tracers[name])) ≈ interior(reference.tracers[name])
+            end
+        else
+            thermodynamic_functions = full ? (potential_energy, temperature, exner, chemical_potential_analogue, chemical_potential) :
+                                             (temperature,)
+            for f in thermodynamic_functions
+                @test all(isfinite, computed(thermodynamic_operation(model, f)))
+            end
+            productions = full ? (viscous_dissipation, θ_production, buoyancy_production, nonlinear_buoyancy_production,
+                                  entropy_production, potential_energy_conversion, buoyancy_work) : (θ_production, entropy_production)
+            for diagnostic in productions
+                @test all(isfinite, computed(diagnostic(model)))
+            end
+            for flux in (full ? (θ_flux, salt_flux, buoyancy_flux) : (θ_flux,))
+                @test all(isfinite, computed(flux(model).z))
+            end
+        end
+    end
+
+    #=
+    Float64 only: in Float32, π ≈ cₚ = 4000 J kg⁻¹ K⁻¹ is resolved to 2.4 × 10⁻⁴ J kg⁻¹ K⁻¹, while π differs between
+    neighbouring cells of `architecture_model` by about 5 × 10⁻⁴ J kg⁻¹ K⁻¹ vertically and 1.5 × 10⁻⁵ J kg⁻¹ K⁻¹
+    horizontally, so that the diagnostics formed from these differences (such as σ_θ and j_θ·∇π) are dominated by
+    round-off, which differs between architectures. The Float32 diagnostics on the GPU are checked to be finite above.
+    =#
+    if test_gpu
+        @testset "GPU diagnostics match the CPU [Float64]" begin
+            test_architectures_match(comparison_models(GPU(), Float64)...)
+        end
     end
 end

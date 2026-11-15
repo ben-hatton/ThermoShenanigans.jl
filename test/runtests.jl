@@ -6,23 +6,12 @@ using ExplicitImports: check_no_implicit_imports, check_no_stale_explicit_import
 
 include("utils_for_runtests.jl")
 
-include("test_thermodynamics.jl")
+files = test_files(test_group)
+foreach(include, files)
+foreach(run_test_file, files)
 
-if test_group == "all"
-    include("test_buoyancy.jl")
-    include("test_diffusivity.jl")
-    include("test_production.jl")
-    include("test_energy_conservation.jl")
-    include("test_energetics.jl")
-    include("test_architectures.jl")
+if test_group == "all" || test_doctests_and_imports
+    run_doctests_and_imports()
 else
-    include("test_basic.jl")
+    @info "Doctests and explicit imports are skipped: set TEST_DOCTESTS_AND_IMPORTS=true, or TEST_GROUP=all, to run them"
 end
-
-@testset "Explicit imports" begin
-    @test isnothing(check_no_implicit_imports(ThermoShenanigans))
-    # diffusive_flux_x/y/z are extended inside an @eval loop through interpolated Symbols, which ExplicitImports cannot see
-    @test isnothing(check_no_stale_explicit_imports(ThermoShenanigans; ignore = (:diffusive_flux_x, :diffusive_flux_y, :diffusive_flux_z)))
-end
-
-doctest(ThermoShenanigans; manual = false)

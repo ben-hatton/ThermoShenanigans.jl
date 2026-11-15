@@ -9,6 +9,29 @@ using ThermoShenanigans: barodiffusion_coefficient, θ_flux_prefactor
 # TEST_GROUP=basic (the default) runs a quick core set; TEST_GROUP=all runs the full suite
 const test_group = get(ENV, "TEST_GROUP", "basic")
 
+# The doctests and the explicit-imports check run with TEST_GROUP=all, and with TEST_GROUP=basic when
+# TEST_DOCTESTS_AND_IMPORTS=true, after a change to a docstring, an export or an import
+const test_doctests_and_imports = get(ENV, "TEST_DOCTESTS_AND_IMPORTS", "false") == "true"
+
+# Test files of each group, in the order they run
+test_files(group) = group == "all" ? ["test_thermodynamics.jl", "test_buoyancy.jl", "test_diffusivity.jl", "test_production.jl",
+                                      "test_energy_conservation.jl", "test_energetics.jl", "test_architectures.jl"] :
+                                     ["test_thermodynamics.jl", "test_basic.jl"]
+
+# Each test file `test_name.jl` defines a function `test_name()` that runs its tests, compiled once per session. The call
+# goes through `invokelatest` since the function is defined after the caller was compiled.
+run_test_file(file) = Base.invokelatest(getproperty(@__MODULE__, Symbol(splitext(basename(file))[1])))
+
+function run_doctests_and_imports()
+    @testset "Explicit imports" begin
+        @test isnothing(check_no_implicit_imports(ThermoShenanigans))
+        # diffusive_flux_x/y/z are extended inside an @eval loop through interpolated Symbols, which ExplicitImports cannot see
+        @test isnothing(check_no_stale_explicit_imports(ThermoShenanigans; ignore = (:diffusive_flux_x, :diffusive_flux_y, :diffusive_flux_z)))
+    end
+
+    doctest(ThermoShenanigans; manual = false)
+end
+
 # Set TEST_ARCHITECTURE=GPU to also run the architecture tests on a GPU. CUDA is not a test dependency, since installing
 # and precompiling it dominates CPU-only runs, so it is added to the test environment only then, unless the environment
 # already has it (as `benchmark/Project.toml`, used by `benchmark/gpu.slurm` on compute nodes without internet, does).
