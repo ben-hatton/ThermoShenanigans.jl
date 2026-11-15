@@ -34,7 +34,7 @@ using Oceananigans: Oceananigans
 using Oceananigans.Advection: div_Uc, div_𝐯u, div_𝐯v, div_𝐯w, half_ϕ²
 using Oceananigans.Architectures: CPU, architecture, on_architecture
 using Oceananigans.BoundaryConditions: fill_halo_regions!
-using Oceananigans.Fields: Field, FieldStatus, compute_at!, set_status!
+using Oceananigans.Fields: Field, FieldStatus, compute_at!, interior, set_status!
 using Oceananigans.Grids: Center, Face, NegativeZDirection, XYZRegularRG, znode
 using Oceananigans.Operators: ∂xᶠᶜᶜ, ∂yᶜᶠᶜ, ∂zᶜᶜᶠ, ℑxᶠᵃᵃ, ℑyᵃᶠᵃ, ℑzᵃᵃᶠ, ℑxᶜᵃᵃ, ℑyᵃᶜᵃ, ℑzᵃᵃᶜ,
                               ℑxyᶜᶜᵃ, ℑxzᶜᵃᶜ, ℑyzᵃᶜᶜ, δxᶜᵃᵃ, δxᶠᵃᵃ, δyᵃᶜᵃ, δyᵃᶠᵃ, δzᵃᵃᶜ, δzᵃᵃᶠ,
