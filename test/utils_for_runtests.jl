@@ -14,10 +14,11 @@ using ThermoShenanigans
 using ForwardDiff: derivative
 using Oceananigans.AbstractOperations: KernelFunctionOperation
 using Oceananigans.Fields: location
+using Oceananigans.Grids: znode
 using Oceananigans.Operators: volume
 using Oceananigans.TimeSteppers: update_state!, compute_tendencies!
 using Oceananigans.TurbulenceClosures: ∇_dot_qᶜ, diffusive_flux_x, diffusive_flux_y, diffusive_flux_z
-using ThermoShenanigans: barodiffusion_coefficient, θ_flux_prefactor
+using ThermoShenanigans: barodiffusion_coefficient, θ_flux_prefactor, thermodynamic_functionᶜᶜᶜ
 
 # Each test file `test_name.jl` defines a function `test_name()` that runs its tests, compiled once per session. The call
 # goes through `invokelatest` since the function is defined after the caller was compiled.
@@ -167,6 +168,29 @@ function set_resting_equilibrium!(model, thermodynamics; T_isotherm = 283.0, S_b
     end
     set!(model, θ = reshape(θ, 1, 1, Nz), S = reshape(S, 1, 1, Nz))
     return S, Γ_S(1), Δz
+end
+
+#=
+A user θ forcing F_θ = q / π, the θ forcing of a heating q = π F_θ = q₁ sin(2π z / Lz), on a grid with z ∈ (-Lz, 0).
+A discrete-form forcing that reads the model's tracers, with π evaluated as in `thermodynamic_operation(model, exner)`.
+=#
+@inline function θ_forcing_by_heatingᶜᶜᶜ(i, j, k, grid, clock, fields, parameters)
+    z = znode(i, j, k, grid, Center(), Center(), Center())
+    q = parameters.heating_amplitude * sinpi(2 * z / grid.Lz)
+    return q / thermodynamic_functionᶜᶜᶜ(i, j, k, grid, exner, parameters.buoyancy_formulation, fields)
+end
+
+function θ_forcing_by_heating(grid, thermodynamics; heating_amplitude = 100)
+    parameters = (; heating_amplitude = convert(eltype(grid), heating_amplitude),
+                    buoyancy_formulation = ThermodynamicBuoyancy(grid, thermodynamics))
+    return Forcing(θ_forcing_by_heatingᶜᶜᶜ; discrete_form = true, parameters)
+end
+
+# The θ tendency G_θ of `model`, with all of its forcings
+function θ_tendency(model)
+    update_state!(model)
+    compute_tendencies!(model, [])
+    return Array(interior(model.timestepper.Gⁿ.θ))
 end
 
 # Discrete integrals and fluxes

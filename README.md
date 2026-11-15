@@ -54,7 +54,12 @@ run!(simulation)
 ```
 
 `thermodynamic_model_components` returns the `buoyancy`, `closure` and `forcing` keyword arguments of
-`NonhydrostaticModel`, so the result is an ordinary Oceananigans model.
+`NonhydrostaticModel`, so the result is an ordinary Oceananigans model. Pass any other forcing to
+`thermodynamic_model_components(...; forcing)`, not to the model constructor: it combines a θ forcing with the θ
+source σ_θ, which a `forcing` given to the model would replace. To build the model by hand, pass the θ forcing
+`θ_production_forcing(closure, buoyancy)` to `NonhydrostaticModel` with the same `closure` and `buoyancy`, and any
+other θ forcing next to it, as in `forcing = (; θ = (σ_θ, heating))`. Energy is conserved only if σ_θ is built from
+the model's own closure and buoyancy; any other θ forcing F_θ changes the energy by ∫ π F_θ dV.
 
 ## Making the Boussinesq approximation
 

@@ -17,18 +17,15 @@ field_data(fields) = map(field -> field.data, fields)
 # The data of the model fields read by the diagnostics
 velocities_and_tracers(model) = field_data(merge(model.velocities, model.tracers))
 
-# The parameters of the production terms in `production.jl`: the viscous closure and its fields, the
-# `ThermodynamicDiffusivity` and the `ThermodynamicBuoyancy` of a model
-function production_parameters(model)
-    diffusivity = only(filter(Base.Fix2(isa, ThermodynamicDiffusivity), model.closure))
-    return (; viscous_closure = model.closure, closure_fields = model.closure_fields, diffusivity,
-              buoyancy = model.buoyancy.formulation)
-end
+# The parameters of the production terms in `production.jl` for the closure and buoyancy of a model, built as for its
+# θ forcing σ_θ
+production_parameters(model) = production_parameters(model.closure, model.buoyancy.formulation)
 
 #=
 One function per diagnostic, after Oceanostics.jl: each returns a `KernelFunctionOperation` (or a `NamedTuple` of
 the x, y and z components of a face flux), so that only the diagnostics asked for are compiled. Wrap them in `Field`
-to compute them. All take a model built with `thermodynamic_model_components` (`consistent = true`).
+to compute them. All take a model built with `thermodynamic_model_components` (`consistent = true`), or by hand with
+the θ forcing of `θ_production_forcing`.
 =#
 
 """

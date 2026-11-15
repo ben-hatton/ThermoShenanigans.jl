@@ -37,6 +37,11 @@ const source_groups = (
     bpe_budget     = (sources = ["bpe_budget.jl"],
                       tests   = ["test_bpe_budget.jl", "test_architectures.jl"]),
 
+    # σ_θ of `θ_production_forcing`, with the production parameters it shares with the diagnostics, and a user θ forcing
+    # combined with σ_θ
+    model_components = (sources = ["model_components.jl", "production.jl", "diagnostics.jl"],
+                        tests   = ["test_model_components.jl"]),
+
     # The exports and imports of the module file, and the docstrings of every file
     doctests_and_imports = (sources = ["ThermoShenanigans.jl"],
                             tests   = ["test_doctests_and_imports.jl"]))
@@ -52,8 +57,8 @@ const suite_groups = (
 
     # The full suite, with every test file but `test_basic.jl`, whose tests it repeats for more thermodynamics and grids
     all = ["test_thermodynamics.jl", "test_buoyancy.jl", "test_diffusivity.jl", "test_production.jl",
-           "test_energy_conservation.jl", "test_reference_state.jl", "test_ape_budget.jl", "test_ke_budget.jl",
-           "test_bpe_budget.jl", "test_architectures.jl", "test_doctests_and_imports.jl"])
+           "test_energy_conservation.jl", "test_model_components.jl", "test_reference_state.jl", "test_ape_budget.jl",
+           "test_ke_budget.jl", "test_bpe_budget.jl", "test_architectures.jl", "test_doctests_and_imports.jl"])
 
 group_tests(name::Symbol) = haskey(suite_groups, name) ? suite_groups[name] : source_groups[name].tests
 

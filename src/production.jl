@@ -98,8 +98,24 @@ end
 
 #=
 They take the arguments of a discrete-form `Forcing`, with parameters = (; viscous_closure, closure_fields, diffusivity,
-buoyancy) holding the viscous closure and its fields, the `ThermodynamicDiffusivity` and the `ThermodynamicBuoyancy`.
+buoyancy) holding the viscous closure and its fields, the `ThermodynamicDiffusivity` and the `ThermodynamicBuoyancy`,
+as returned by `production_parameters`.
 =#
+
+is_thermodynamic_diffusivity(closure) = closure isa ThermodynamicDiffusivity
+
+#=
+The parameters of the production terms, from a closure pair of a viscous closure and a `ThermodynamicDiffusivity`, in
+either order, and a `ThermodynamicBuoyancy`. Both the θ forcing σ_θ (`θ_production_forcing`) and the diagnostics
+(`production_parameters(model)`) build their parameters here, so that ε is evaluated from the same arguments in both.
+The viscous closure is a DNS closure with constant coefficients, which has no closure fields.
+=#
+function production_parameters(closure::Tuple, buoyancy_formulation)
+    diffusivity = only(filter(is_thermodynamic_diffusivity, closure))
+    viscous_closure = only(filter(!is_thermodynamic_diffusivity, closure))
+    return (; viscous_closure, closure_fields = nothing, diffusivity, buoyancy = buoyancy_formulation)
+end
+
 @inline dissipationᶜᶜᶜ(i, j, k, grid, clock, fields, parameters) =
     viscous_dissipation_rateᶜᶜᶜ(i, j, k, grid, parameters.viscous_closure, parameters.closure_fields, clock, fields,
                                 parameters.buoyancy)
@@ -117,7 +133,7 @@ buoyancy) holding the viscous closure and its fields, the `ThermodynamicDiffusiv
 #=
 σ_θ = [ε - j_θ·∇π - j_S·∇m] / π, so that π (σ_θ - ∇·j_θ) - m ∇·j_S = ε - ∇·(π j_θ + m j_S):
 the potential energy 𝒫 gains exactly the kinetic energy lost to viscosity, plus a flux divergence (first law).
-Used directly as the θ forcing.
+Used as the θ forcing (`θ_production_forcing`), alone or with other θ forcings in `MultipleForcings`.
 =#
 @inline θ_productionᶜᶜᶜ(i, j, k, grid, clock, fields, parameters) =
     (dissipationᶜᶜᶜ(i, j, k, grid, clock, fields, parameters) -

@@ -10,7 +10,7 @@ export
     ∂T∂θ, ∂T∂S, heat_capacity, isothermal_∂b∂S, isothermal_∂μ∂S,
 
     # Buoyancy, closure and model components
-    ThermodynamicBuoyancy, ThermodynamicDiffusivity, thermodynamic_model_components,
+    ThermodynamicBuoyancy, ThermodynamicDiffusivity, θ_production_forcing, thermodynamic_model_components,
 
     # Thermodynamic diagnostics
     thermodynamic_operation, viscous_dissipation, θ_production, buoyancy_production,
@@ -41,7 +41,7 @@ using Oceananigans.Operators: ∂xᶠᶜᶜ, ∂yᶜᶠᶜ, ∂zᶜᶜᶠ, ℑx�
                               Axᶜᶜᶜ, Axᶠᶜᶜ, Axᶠᶠᶜ, Axᶠᶜᶠ, Ayᶜᶜᶜ, Ayᶜᶠᶜ, Ayᶠᶠᶜ, Ayᶜᶠᶠ, Azᶜᶜᶜ, Azᶜᶜᶠ, Azᶠᶜᶠ, Azᶜᶠᶠ,
                               Vᶜᶜᶜ, Vᶠᶜᶜ, Vᶜᶠᶜ, Vᶜᶜᶠ, Δzᶜᶜᶜ, Δzᶜᶜᶠ
 using Oceananigans.AbstractOperations: KernelFunctionOperation
-using Oceananigans.Forcings: Forcing
+using Oceananigans.Forcings: Forcing, MultipleForcings
 using Oceananigans.Utils: launch!, prettysummary
 using Oceananigans.TimeSteppers: ExplicitTimeDiscretization
 using Oceananigans.BuoyancyFormulations: BuoyancyForce, θ_and_sᴬ

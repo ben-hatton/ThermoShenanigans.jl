@@ -83,12 +83,12 @@ y, so that pairs of cells share a buoyancy to within round-off, and the round-of
 architectures could order them differently in the sorted reference state. No two cells of a random state are that
 close in buoyancy, so the reference states of the two architectures agree.
 =#
-function comparison_models(arch, FT)
-    cpu = component_model(architecture_grid(CPU(), FT), architecture_thermodynamics(FT))
+function comparison_models(arch, FT; model_kwargs...)
+    cpu = component_model(architecture_grid(CPU(), FT), architecture_thermodynamics(FT); model_kwargs...)
     set_random_state!(cpu)
     values = map(field -> Array(interior(field)), merge(cpu.velocities, cpu.tracers))
 
-    device = component_model(architecture_grid(arch, FT), architecture_thermodynamics(FT))
+    device = component_model(architecture_grid(arch, FT), architecture_thermodynamics(FT); model_kwargs...)
     set!(device; values...)
 
     for model in (device, cpu)
@@ -123,12 +123,12 @@ end
 function test_architectures()
     @testset "Every exported diagnostic is compared between architectures" begin
         # Exported names that are not diagnostics: types, thermodynamic functions f(θ, S, z, thermodynamics), and the
-        # constructor of the model components
+        # constructors of the model components and of the θ forcing σ_θ
         thermodynamics_type = typeof(cabbeling)
         is_thermodynamic_function(f) = hasmethod(f, Tuple{Float64, Float64, Float64, thermodynamics_type})
         exported = filter(name -> name != :ThermoShenanigans, names(ThermoShenanigans))
         exported_values = map(name -> getproperty(ThermoShenanigans, name), exported)
-        is_diagnostic = map(value -> !(value isa Type || value === thermodynamic_model_components ||
+        is_diagnostic = map(value -> !(value isa Type || value in (thermodynamic_model_components, θ_production_forcing) ||
                                        is_thermodynamic_function(value)), exported_values)
 
         compared = (reference_height, thermodynamic_operation, model_diagnostics..., model_fluxes...,
@@ -180,6 +180,16 @@ function test_architectures()
     if test_gpu
         @testset "GPU diagnostics match the CPU [Float64]" begin
             test_architectures_match(comparison_models(GPU(), Float64)...)
+        end
+
+        # The θ forcing as `MultipleForcings` of a user forcing and σ_θ
+        @testset "GPU time step with a user θ forcing matches the CPU [Float64]" begin
+            heating = θ_forcing_by_heating(architecture_grid(CPU(), Float64), architecture_thermodynamics(Float64))
+            device, cpu = comparison_models(GPU(), Float64; forcing = (; θ = heating))
+            device_fields, cpu_fields = merge(device.velocities, device.tracers), merge(cpu.velocities, cpu.tracers)
+            @testset "$name" for name in keys(cpu_fields)
+                @test Array(interior(device_fields[name])) ≈ interior(cpu_fields[name])
+            end
         end
     end
 end
