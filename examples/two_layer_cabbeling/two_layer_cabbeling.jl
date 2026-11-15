@@ -40,16 +40,17 @@ thermodynamics = CabbelingBoussinesqThermodynamics(thermal_expansion = α, halin
                                                    reference_temperature = θ_deep, reference_salinity = S_deep,
                                                    reference_heat_capacity = 3991.86795711963, gravitational_acceleration = g)
 
-# The shallow layer is lighter than the deep layer, but an even mixture of the two is denser:
+# At the interface, z = -0.5 m, the shallow layer is lighter than the deep layer, but an even mixture of the two is denser:
 
-b_shallow = buoyancy(θ_shallow, S_shallow, thermodynamics)
-b_mixture = buoyancy((θ_shallow + θ_deep) / 2, (S_shallow + S_deep) / 2, thermodynamics)
+z_interface = -0.5
+b_shallow = buoyancy(θ_shallow, S_shallow, z_interface, thermodynamics)
+b_mixture = buoyancy((θ_shallow + θ_deep) / 2, (S_shallow + S_deep) / 2, z_interface, thermodynamics)
 @printf("b(shallow) - b(deep) = %.2e m s⁻², b(mixture) - b(deep) = %.2e m s⁻²\n", b_shallow, b_mixture)
 
 # ## Model
 #
 # `thermodynamic_model_components` returns the buoyancy, the consistent closure
-# `(ScalarDiffusivity(ν), ThermodynamicDiffusivity(κ_T, κ_S))` and the θ forcing σ_θ.
+# `(ScalarDiffusivity(ν), ThermodynamicDiffusivity(κ_θ, κ_S))` and the θ forcing σ_θ.
 
 grid = RectilinearGrid(size = (32, 256), x = (-0.035, 0.035), z = (-1, 0), topology = (Periodic, Flat, Bounded))
 
@@ -67,7 +68,7 @@ set!(model, θ = θᵢ, S = Sᵢ)
 simulation = Simulation(model; Δt = 0.5, stop_time = 10minutes)
 
 # The progress message reports the drift of ∫S dV, which is conserved to round-off, and of ∫θ dV,
-# which changes only through the small source σ_θ = (ε - j_θ·∇π - j_S·∇Σ_S) / π.
+# which changes only through the small source σ_θ = (ε - j_θ·∇π - j_S·∇m) / π.
 
 θ, S = model.tracers
 w = model.velocities.w
@@ -86,7 +87,7 @@ add_callback!(simulation, progress, IterationInterval(100))
 # We save θ, S, w and the temperature T, plus the horizontally averaged salinity.
 
 output_dir = joinpath(@__DIR__, "output")
-T = thermodynamic_diagnostics(model).T
+T = thermodynamic_operation(model, temperature)
 
 simulation.output_writers[:fields] = JLD2Writer(model, (; θ, S, T, w); dir = output_dir, filename = "two_layer_cabbeling",
                                                 schedule = TimeInterval(15), overwrite_files = true)

@@ -1,0 +1,165 @@
+#=
+Local background potential energy ℬ = 𝒫(θ, S, z★) - 𝒲★ and its budget; the definitions of 𝒜, ℬ and 𝒢★ are in
+`ape_budget.jl`.
+
+Local background potential energy budget. ℬ = 𝒫 - 𝒜, and ∂𝒫/∂t = π G_θ + m G_S in every cell, where
+- π ∇·j_θ + m ∇·j_S = ∇·j_𝒫 - (j_θ·∇π + j_S·∇m) with j_𝒫 = ℑπ j_θ + ℑm j_S on the faces, by summation by parts;
+- π σ_θ = ε - (j_θ·∇π + j_S·∇m), the θ source of the first law.
+So, with the APE budget, in every cell
+
+    ∂ℬ/∂t = - Υ σ_b + εₐ - ∇·j_ℬ - ∇·(u ℬ) + ε - R★ + 𝒩_ℬ,    j_ℬ = p★ u + j_𝒫 - j_𝒜,
+
+where j_𝒫 - j_𝒜 = (ℑπ - ℑΥ ℑb_θ) j_θ + (ℑm - ℑΥ ℑb_S) j_S discretises π(θ, z★) j_θ + m(z★) j_S, since
+π(θ, S, z) - Υ b_θ = π(θ, S, z★). With p★ u in j_ℬ for a divergence-free velocity (∇·(p★ u) = ℑz(w b★)),
+
+    𝒩_ℬ = π ADV_θ + m ADV_S - Υ ADV_b + ∇·(u ℬ) + ℑz(w b★)
+
+is the production of ℬ by the error of the discrete advection of θ and S, as 𝒩 is for 𝒜. With centred second-order
+advection and the energy-consistent b̃, Σ V (π ADV_θ + m ADV_S) = - Σ V w b̃, so that Σ V 𝒩_ℬ = - Σ V 𝒩: the
+spurious mixing by the advection converts ℬ into 𝒜 (or back) with no net change of 𝒫.
+
+The budget shares the terms Υ σ_b, εₐ and R★ with the APE budget. Boundary fluxes of θ and S, and background fields,
+are not included.
+=#
+
+# ℬ = 𝒫(θ, S, z★) - 𝒲★
+@inline background_potential_energyᶜᶜᶜ(i, j, k, grid, buoyancy_formulation, fields, z★, reference_potential,
+                                       parcel_reference_potential) =
+    @inbounds potential_energy(θ_and_sᴬ(i, j, k, get_temperature_and_salinity(buoyancy_formulation, fields)...)...,
+                               z★[i, j, k], buoyancy_formulation.thermodynamics) -
+              reference_workᶜᶜᶜ(i, j, k, grid, reference_potential, parcel_reference_potential)
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the background potential energy ℬ = 𝒫(θ, S, z★) - 𝒲★ of `model` at (Center, Center, Center), so that
+𝒜 + ℬ = 𝒫. The internal energy ℐ = h⁰, `thermodynamic_operation(model, potential_enthalpy)`,
+lies entirely in ℬ = ℐ + 𝒢★ + g₀ z₀; see [`background_gravitational_energy`](@ref).
+"""
+function background_potential_energy(model, z★::ReferenceHeightField)
+    state = z★.operand
+    return center_operation(background_potential_energyᶜᶜᶜ, model.grid, model.buoyancy.formulation, state.tracers, z★,
+                            state.reference_potential, state.parcel_reference_potential)
+end
+
+# 𝒢★ = - b (z★ - z₀) - 𝒲★, the gravitational part of ℬ
+@inline background_gravitational_energyᶜᶜᶜ(i, j, k, grid, buoyancy, z₀, z★, reference_potential,
+                                           parcel_reference_potential) =
+    @inbounds - buoyancy[i, j, k] * (z★[i, j, k] - z₀) -
+                reference_workᶜᶜᶜ(i, j, k, grid, reference_potential, parcel_reference_potential)
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the gravitational part 𝒢★ = - b (z★ - z₀) - 𝒲★ of the background potential energy ℬ = ℐ + 𝒢★ + g₀ z₀ of
+`model`, at (Center, Center, Center), with z₀ the `reference_pressure_height` of its thermodynamics. It is computed directly, since the internal energy ℐ = h⁰ is much larger than its changes.
+"""
+function background_gravitational_energy(model, z★::ReferenceHeightField)
+    state = z★.operand
+    z₀ = reference_pressure_height(model.buoyancy.formulation.thermodynamics)
+    return center_operation(background_gravitational_energyᶜᶜᶜ, model.grid, state.buoyancy, z₀, z★, state.reference_potential,
+                            state.parcel_reference_potential)
+end
+
+# Generated: potential_energy_flux_{x,y,z}, j_𝒫 = ℑπ j_θ + ℑm j_S, the diffusive flux of 𝒫;
+# unmasked_bpe_flux_{x,y,z} and bpe_flux_{x,y,z}, the components of j_ℬ = p★ u + j_𝒫 - j_𝒜 at faces
+for (dir, average_to_face, velocity_component, wall_mask) in ((:x, ℑxᶠᵃᵃ, :u, wall_mask_x),
+                                                              (:y, ℑyᵃᶠᵃ, :v, wall_mask_y),
+                                                              (:z, ℑzᵃᵃᶠ, :w, wall_mask_z))
+    masked_θ_flux_xyz      = Symbol(:masked_θ_flux_, dir)
+    masked_salt_flux_xyz   = Symbol(:masked_salt_flux_, dir)
+    potential_energy_flux_xyz = Symbol(:potential_energy_flux_, dir)
+    ape_flux_xyz           = Symbol(:ape_flux_, dir)
+    unmasked_bpe_flux_xyz  = Symbol(:unmasked_bpe_flux_, dir)
+    bpe_flux_xyz           = Symbol(:bpe_flux_, dir)
+
+    @eval begin
+        @inline $potential_energy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) =
+            $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, exner, buoyancy_formulation, fields) *
+            $masked_θ_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) +
+            $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, chemical_potential_analogue, buoyancy_formulation, fields) *
+            $masked_salt_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields)
+
+        @inline $unmasked_bpe_flux_xyz(i, j, k, grid, z★, reference_potential, closure, buoyancy_formulation, fields) =
+            @inbounds fields.$velocity_component[i, j, k] *
+                      $average_to_face(i, j, k, grid, reference_potentialᶜᶜᶜ, reference_potential) +
+                      $potential_energy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) -
+                      $ape_flux_xyz(i, j, k, grid, z★, closure, buoyancy_formulation, fields)
+
+        @inline $bpe_flux_xyz(i, j, k, grid, z★, reference_potential, closure, buoyancy_formulation, fields) =
+            $wall_mask(i, j, k, grid, $unmasked_bpe_flux_xyz, z★, reference_potential, closure, buoyancy_formulation, fields)
+    end
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the flux j_ℬ = p★ u + π(θ, z★) j_θ + m(z★) j_S of background potential energy of `model`, a `NamedTuple` of its
+`(x, y, z)` components at faces, zero at walls. Its diffusive part is j_𝒫 - j_𝒜, with j_𝒫 = ℑπ j_θ + ℑm j_S the
+diffusive flux of potential energy and j_𝒜 the [`ape_flux`](@ref).
+"""
+bpe_flux(model, z★::ReferenceHeightField) =
+    face_operations(bpe_flux_x, bpe_flux_y, bpe_flux_z, model.grid, z★, z★.operand.reference_potential,
+                    production_parameters(model).diffusivity, model.buoyancy.formulation, velocities_and_tracers(model))
+
+# ℬ for the advective operators, as `ape_data_operation` for 𝒜
+function bpe_data_operation(z★)
+    state = z★.operand
+    return center_operation(background_potential_energyᶜᶜᶜ, z★.grid, state.buoyancy_formulation, state.tracers, z★.data,
+                            state.reference_potential, state.parcel_reference_potential)
+end
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the advection - ∇·(u ℬ) of background potential energy by `model`, with its tracer advection scheme, at
+(Center, Center, Center).
+"""
+bpe_advection(model, z★::ReferenceHeightField) =
+    center_operation(with_reference_state, model.grid, z★, energy_advectionᶜᶜᶜ, model.advection,
+                     velocities_and_tracers(model), bpe_data_operation(z★))
+
+# m ∇·(u S), zero for constant salinity
+@inline salt_advection_potential_energy_tendencyᶜᶜᶜ(i, j, k, grid, advection, buoyancy_formulation, fields) =
+    thermodynamic_functionᶜᶜᶜ(i, j, k, grid, chemical_potential_analogue, buoyancy_formulation, fields) *
+    div_Uc(i, j, k, grid, advection.S, fields, fields.S)
+
+@inline salt_advection_potential_energy_tendencyᶜᶜᶜ(i, j, k, grid, advection, ::ConstantSalinityThermodynamicBuoyancy,
+                                                    fields) = zero(grid)
+
+# π ADV_θ + m ADV_S = - π ∇·(u θ) - m ∇·(u S), the tendency of 𝒫 by the model's advection of θ and S
+@inline advective_potential_energy_tendencyᶜᶜᶜ(i, j, k, grid, advection, buoyancy_formulation, fields) =
+    - thermodynamic_functionᶜᶜᶜ(i, j, k, grid, exner, buoyancy_formulation, fields) *
+      div_Uc(i, j, k, grid, advection.θ, fields, fields.θ) -
+    salt_advection_potential_energy_tendencyᶜᶜᶜ(i, j, k, grid, advection, buoyancy_formulation, fields)
+
+# w b★ at (Center, Center, Face)
+@inline reference_buoyancy_workᶜᶜᶠ(i, j, k, grid, fields, reference_buoyancy) =
+    @inbounds fields.w[i, j, k] * reference_buoyancy[1, 1, k]
+
+# 𝒩_ℬ = π ADV_θ + m ADV_S - Υ ADV_b + ∇·(u ℬ) + ℑz(w b★)
+@inline spurious_bpe_productionᶜᶜᶜ(i, j, k, grid, z★, bpe, reference_buoyancy, advection, buoyancy_formulation, fields) =
+    advective_potential_energy_tendencyᶜᶜᶜ(i, j, k, grid, advection, buoyancy_formulation, fields) -
+    reference_displacementᶜᶜᶜ(i, j, k, grid, z★) *
+    advective_buoyancy_tendencyᶜᶜᶜ(i, j, k, grid, advection, buoyancy_formulation, fields) -
+    energy_advectionᶜᶜᶜ(i, j, k, grid, advection, fields, bpe) +
+    ℑzᵃᵃᶜ(i, j, k, grid, reference_buoyancy_workᶜᶜᶠ, fields, reference_buoyancy)
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the production 𝒩_ℬ = π ADV_θ + m ADV_S - Υ ADV_b + ∇·(u ℬ) + ℑz(w b★) of background potential energy by the
+error of the discrete advection of `model`, at (Center, Center, Center), with ADV_θ, ADV_S and ADV_b the tendencies
+of θ, S and b by the discrete advection. 𝒩_ℬ vanishes in the continuum. With Oceananigans' default
+`Centered(order = 2)` advection, its integral is minus that of the [`spurious_ape_production`](@ref) 𝒩. Then, in every
+cell,
+
+    ∂ℬ/∂t = - Υ σ_b + εₐ - ∇·j_ℬ - ∇·(u ℬ) + ε - R★ + 𝒩_ℬ
+
+exactly for a divergence-free velocity, when no two cells share a buoyancy, with Υ σ_b the [`ape_production`](@ref),
+εₐ the [`ape_dissipation`](@ref), j_ℬ the [`bpe_flux`](@ref), - ∇·(u ℬ) the [`bpe_advection`](@ref), ε the
+[`viscous_dissipation`](@ref) and R★ the [`reference_tendency_work`](@ref).
+"""
+spurious_bpe_production(model, z★::ReferenceHeightField) =
+    center_operation(spurious_bpe_productionᶜᶜᶜ, model.grid, z★, bpe_data_operation(z★), z★.operand.reference_buoyancy,
+                     model.advection, model.buoyancy.formulation, velocities_and_tracers(model))

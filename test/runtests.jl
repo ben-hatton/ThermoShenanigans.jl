@@ -1,27 +1,20 @@
-using Test
-using Oceananigans
-using ThermoShenanigans
-using Documenter: doctest
-using ExplicitImports: check_no_implicit_imports, check_no_stale_explicit_imports
+#=
+Runs the test groups or files named by `test_args`, or else by TEST_GROUP ("basic" by default); see test/test_groups.jl.
+
+    Pkg.test(test_args = ["energetics"])
+    Pkg.test(test_args = ["thermodynamics", "test_buoyancy.jl"])
+    TEST_GROUP=all julia --project -e 'using Pkg; Pkg.test()'
+=#
 
 include("utils_for_runtests.jl")
+include("test_groups.jl")
 
-include("test_thermodynamics.jl")
+files = test_files(selected_names())
+@info "Running $(join(files, ", "))"
 
-if test_group == "all"
-    include("test_buoyancy.jl")
-    include("test_diffusivity.jl")
-    include("test_production.jl")
-    include("test_energy_conservation.jl")
-    include("test_architectures.jl")
-else
-    include("test_basic.jl")
-end
+test_groups()
+foreach(include, files)
+foreach(run_test_file, files)
 
-@testset "Explicit imports" begin
-    @test isnothing(check_no_implicit_imports(ThermoShenanigans))
-    # diffusive_flux_x/y/z are extended inside an @eval loop through interpolated Symbols, which ExplicitImports cannot see
-    @test isnothing(check_no_stale_explicit_imports(ThermoShenanigans; ignore = (:diffusive_flux_x, :diffusive_flux_y, :diffusive_flux_z)))
-end
-
-doctest(ThermoShenanigans; manual = false)
+"test_doctests_and_imports.jl" in files ||
+    @info "Doctests and explicit imports are skipped: select the group doctests_and_imports or all, or set TEST_DOCTESTS_AND_IMPORTS=true, to run them"

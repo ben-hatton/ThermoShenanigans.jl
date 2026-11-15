@@ -72,10 +72,10 @@ add_callback!(simulation, progress, IterationInterval(100))
 #
 # We save a vertical slice, horizontally averaged profiles, and volume integrals.
 
-diagnostics = thermodynamic_diagnostics(model)
+T, ε, σ_η = thermodynamic_operation(model, temperature), viscous_dissipation(model), entropy_production(model)
 prefix = "two_layer_cabbeling"
 
-simulation.output_writers[:slices] = JLD2Writer(model, (; S, w, T = diagnostics.T, σ_η = diagnostics.σ_η);
+simulation.output_writers[:slices] = JLD2Writer(model, (; S, w, T, σ_η);
                                                 filename = prefix * "_slices", indices = (:, Nx ÷ 2, :),
                                                 schedule = TimeInterval(30), overwrite_files = true)
 
@@ -85,7 +85,7 @@ simulation.output_writers[:profiles] = JLD2Writer(model, (; θ = Average(θ, dim
 
 simulation.output_writers[:integrals] = JLD2Writer(model, (; ∫θ = Integral(θ), ∫S = Integral(S),
                                                              ∫KE = Integral((u^2 + v^2 + w^2) / 2),
-                                                             ∫ε = Integral(diagnostics.ε), ∫σ_η = Integral(diagnostics.σ_η));
+                                                             ∫ε = Integral(ε), ∫σ_η = Integral(σ_η));
                                                    filename = prefix * "_integrals",
                                                    schedule = TimeInterval(10), array_type = Array{Float64},
                                                    overwrite_files = true)
