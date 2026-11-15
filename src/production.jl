@@ -35,50 +35,54 @@ native location of the viscous flux Fᵢⱼ, so that Σ ε V is exactly the disc
 @inline salt_entropy_coefficient(θ, S, z, thermodynamics) =
     isothermal_∂μ∂S(θ, S, z, thermodynamics) / temperature(θ, S, z, thermodynamics)
 
-for (dir, δ, ∂, ℑᶠ, A, V, wall_mask) in ((:x, δxᶠᵃᵃ, ∂xᶠᶜᶜ, ℑxᶠᵃᵃ, Axᶠᶜᶜ, Vᶠᶜᶜ, biharmonic_mask_x),
-                                          (:y, δyᵃᶠᵃ, ∂yᶜᶠᶜ, ℑyᵃᶠᵃ, Ayᶜᶠᶜ, Vᶜᶠᶜ, biharmonic_mask_y),
-                                          (:z, δzᵃᵃᶠ, ∂zᶜᶜᶠ, ℑzᵃᵃᶠ, Azᶜᶜᶠ, Vᶜᶜᶠ, biharmonic_mask_z))
+# Generated for each direction, with `dir` and the operators of that direction:
+#   face_contraction_{x,y,z}, buoyancy_flux_{x,y,z}, salt_entropy_production_{x,y,z},
+#   unmasked_entropy_production_{x,y,z}, face_entropy_production_{x,y,z}
+for (dir, difference_to_face, derivative_to_face, average_to_face, face_area, face_volume, wall_mask) in
+        ((:x, δxᶠᵃᵃ, ∂xᶠᶜᶜ, ℑxᶠᵃᵃ, Axᶠᶜᶜ, Vᶠᶜᶜ, wall_mask_x),
+         (:y, δyᵃᶠᵃ, ∂yᶜᶠᶜ, ℑyᵃᶠᵃ, Ayᶜᶠᶜ, Vᶜᶠᶜ, wall_mask_y),
+         (:z, δzᵃᵃᶠ, ∂zᶜᶜᶠ, ℑzᵃᵃᶠ, Azᶜᶜᶠ, Vᶜᶜᶠ, wall_mask_z))
 
-    θ_flux_kernel               = Symbol(:masked_θ_flux_, dir)
-    salt_flux_kernel            = Symbol(:masked_salt_flux_, dir)
-    salt_gradient               = Symbol(:salt_gradient_, dir)
-    face_contraction            = Symbol(:face_contraction_, dir)
-    buoyancy_flux_kernel        = Symbol(:buoyancy_flux_, dir)
-    face_entropy_production     = Symbol(:face_entropy_production_, dir)
-    unmasked_entropy_production = Symbol(:unmasked_entropy_production_, dir)
-    salt_entropy_production     = Symbol(:salt_entropy_production_, dir)
+    masked_θ_flux_xyz               = Symbol(:masked_θ_flux_, dir)
+    masked_salt_flux_xyz            = Symbol(:masked_salt_flux_, dir)
+    salt_gradient_xyz               = Symbol(:salt_gradient_, dir)
+    face_contraction_xyz            = Symbol(:face_contraction_, dir)
+    buoyancy_flux_xyz               = Symbol(:buoyancy_flux_, dir)
+    face_entropy_production_xyz     = Symbol(:face_entropy_production_, dir)
+    unmasked_entropy_production_xyz = Symbol(:unmasked_entropy_production_, dir)
+    salt_entropy_production_xyz     = Symbol(:salt_entropy_production_, dir)
 
     @eval begin
         # A (j_θ δf_θ + j_S δf_S)
-        @inline $face_contraction(i, j, k, grid, f_θ, f_S, closure, buoyancy_formulation, fields) =
-            $A(i, j, k, grid) * ($θ_flux_kernel(i, j, k, grid, closure, buoyancy_formulation, fields) *
-                                 $δ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, f_θ, buoyancy_formulation, fields) +
-                                 $salt_flux_kernel(i, j, k, grid, closure, buoyancy_formulation, fields) *
-                                 $δ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, f_S, buoyancy_formulation, fields))
+        @inline $face_contraction_xyz(i, j, k, grid, f_θ, f_S, closure, buoyancy_formulation, fields) =
+            $face_area(i, j, k, grid) * ($masked_θ_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) *
+                                         $difference_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, f_θ, buoyancy_formulation, fields) +
+                                         $masked_salt_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) *
+                                         $difference_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, f_S, buoyancy_formulation, fields))
 
         # j_b = ℑ(b_θ) j_θ + ℑ(b_S) j_S
-        @inline $buoyancy_flux_kernel(i, j, k, grid, closure, buoyancy_formulation, fields) =
-            $ℑᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, HeightIndependent(∂b∂θ), buoyancy_formulation, fields) *
-            $θ_flux_kernel(i, j, k, grid, closure, buoyancy_formulation, fields) +
-            $ℑᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, HeightIndependent(∂b∂S), buoyancy_formulation, fields) *
-            $salt_flux_kernel(i, j, k, grid, closure, buoyancy_formulation, fields)
+        @inline $buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) =
+            $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, HeightIndependent(∂b∂θ), buoyancy_formulation, fields) *
+            $masked_θ_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) +
+            $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, HeightIndependent(∂b∂S), buoyancy_formulation, fields) *
+            $masked_salt_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields)
 
         # κ_S ℑ((∂μ/∂S)_T / T) (∂S + Γ_S)², zero for constant salinity
-        @inline $salt_entropy_production(i, j, k, grid, closure, buoyancy_formulation, fields) =
-            closure.salt_diffusivity * $ℑᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, salt_entropy_coefficient, buoyancy_formulation, fields) *
-                                       $salt_gradient(i, j, k, grid, buoyancy_formulation, fields)^2
-        @inline $salt_entropy_production(i, j, k, grid, closure, buoyancy_formulation::ConstantSalinityThermodynamicBuoyancy, fields) =
+        @inline $salt_entropy_production_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) =
+            closure.salt_diffusivity * $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, salt_entropy_coefficient, buoyancy_formulation, fields) *
+                                       $salt_gradient_xyz(i, j, k, grid, buoyancy_formulation, fields)^2
+        @inline $salt_entropy_production_xyz(i, j, k, grid, closure, buoyancy_formulation::ConstantSalinityThermodynamicBuoyancy, fields) =
             zero(grid)
 
         # V [κ_θ ℑ(cₚ/T²) (∂T)² + κ_S ℑ((∂μ/∂S)_T / T) (∂S + Γ_S)²] ≥ 0
-        @inline $unmasked_entropy_production(i, j, k, grid, closure, buoyancy_formulation, fields) =
-            $V(i, j, k, grid) * (closure.thermal_diffusivity *
-                                 $ℑᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, heat_entropy_coefficient, buoyancy_formulation, fields) *
-                                 $∂(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, temperature, buoyancy_formulation, fields)^2 +
-                                 $salt_entropy_production(i, j, k, grid, closure, buoyancy_formulation, fields))
+        @inline $unmasked_entropy_production_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) =
+            $face_volume(i, j, k, grid) * (closure.thermal_diffusivity *
+                                           $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, heat_entropy_coefficient, buoyancy_formulation, fields) *
+                                           $derivative_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, temperature, buoyancy_formulation, fields)^2 +
+                                           $salt_entropy_production_xyz(i, j, k, grid, closure, buoyancy_formulation, fields))
 
-        @inline $face_entropy_production(i, j, k, grid, closure, buoyancy_formulation, fields) =
-            $wall_mask(i, j, k, grid, $unmasked_entropy_production, closure, buoyancy_formulation, fields)
+        @inline $face_entropy_production_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) =
+            $wall_mask(i, j, k, grid, $unmasked_entropy_production_xyz, closure, buoyancy_formulation, fields)
     end
 end
 

@@ -81,9 +81,15 @@ cell_diffusion_timescale(closure::ThermodynamicDiffusivity, closure_fields, grid
     ∂zᶜᶜᶠ(i, j, k, grid, fields.S) +
     ℑzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, barodiffusion_coefficient, buoyancy_formulation, fields)
 
-for (dir, ∂, ℑ, wall_mask) in ((:x, ∂xᶠᶜᶜ, ℑxᶠᵃᵃ, biharmonic_mask_x),
-                               (:y, ∂yᶜᶠᶜ, ℑyᵃᶠᵃ, biharmonic_mask_y),
-                               (:z, ∂zᶜᶜᶠ, ℑzᵃᵃᶠ, biharmonic_mask_z))
+# Oceananigans' `biharmonic_mask_{x,y,z}(i, j, k, grid, f, args...)` return zero where the face is a wall of a bounded
+# direction, and `f(i, j, k, grid, args...)` elsewhere. Here they mask the fluxes through walls.
+const wall_mask_x = biharmonic_mask_x
+const wall_mask_y = biharmonic_mask_y
+const wall_mask_z = biharmonic_mask_z
+
+for (dir, ∂, ℑ, wall_mask) in ((:x, ∂xᶠᶜᶜ, ℑxᶠᵃᵃ, wall_mask_x),
+                               (:y, ∂yᶜᶠᶜ, ℑyᵃᶠᵃ, wall_mask_y),
+                               (:z, ∂zᶜᶜᶠ, ℑzᵃᵃᶠ, wall_mask_z))
     salt_gradient    = Symbol(:salt_gradient_, dir)
     salt_flux_kernel = Symbol(:salt_flux_, dir)
     θ_flux_kernel    = Symbol(:θ_flux_, dir)

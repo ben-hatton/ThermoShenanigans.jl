@@ -1,6 +1,6 @@
 #=
 Test groups, selected by name with `Pkg.test(test_args = ["energetics"])`, `TEST_GROUP=energetics`, or
-`run_tests("energetics")` in `test/session.jl`. A name is a group below, or a test file (`test_energetics.jl`).
+`run_tests("energetics")` in `test/session.jl`. A name is a group below, or a test file (`test_ape_budget.jl`).
 
 Each source group lists the files in `src/` and the test files that cover them: after a change to a source file, run the
 groups that list it. `test_groups()` checks that every file in `src/` belongs to at least one group and every test file
@@ -24,8 +24,18 @@ const source_groups = (
     production     = (sources = ["production.jl", "diagnostics.jl"],
                       tests   = ["test_production.jl", "test_architectures.jl"]),
 
-    energetics     = (sources = ["reference_state.jl", "sorting.jl", "energetics.jl"],
-                      tests   = ["test_energetics.jl", "test_architectures.jl"]),
+    reference_state = (sources = ["reference_state.jl", "sorting.jl"],
+                       tests   = ["test_reference_state.jl", "test_architectures.jl"]),
+
+    # The budgets of 𝒜, 𝒦 and ℬ share terms, and the tests of ℬ close the budgets of all three
+    ape_budget     = (sources = ["ape_budget.jl"],
+                      tests   = ["test_ape_budget.jl", "test_bpe_budget.jl", "test_architectures.jl"]),
+
+    ke_budget      = (sources = ["ke_budget.jl"],
+                      tests   = ["test_ke_budget.jl", "test_bpe_budget.jl", "test_architectures.jl"]),
+
+    bpe_budget     = (sources = ["bpe_budget.jl"],
+                      tests   = ["test_bpe_budget.jl", "test_architectures.jl"]),
 
     # The exports and imports of the module file, and the docstrings of every file
     doctests_and_imports = (sources = ["ThermoShenanigans.jl"],
@@ -36,15 +46,20 @@ const suite_groups = (
     # A quick core set (the default): the thermodynamic derivatives, and the first and second laws and a time step on one model
     basic = ["test_thermodynamics.jl", "test_basic.jl"],
 
+    # The reference state and the local energetics, whose sources are all of the groups reference_state and *_budget
+    energetics = ["test_reference_state.jl", "test_ape_budget.jl", "test_ke_budget.jl", "test_bpe_budget.jl",
+                  "test_architectures.jl"],
+
     # The full suite, with every test file but `test_basic.jl`, whose tests it repeats for more thermodynamics and grids
     all = ["test_thermodynamics.jl", "test_buoyancy.jl", "test_diffusivity.jl", "test_production.jl",
-           "test_energy_conservation.jl", "test_energetics.jl", "test_architectures.jl", "test_doctests_and_imports.jl"])
+           "test_energy_conservation.jl", "test_reference_state.jl", "test_ape_budget.jl", "test_ke_budget.jl",
+           "test_bpe_budget.jl", "test_architectures.jl", "test_doctests_and_imports.jl"])
 
 group_tests(name::Symbol) = haskey(suite_groups, name) ? suite_groups[name] : source_groups[name].tests
 
 is_test_file(name) = isfile(joinpath(@__DIR__, name)) && startswith(name, "test_") && endswith(name, ".jl")
 
-# Test files of `names`, groups (such as "energetics" or "all") or test files (such as "test_energetics.jl"), in the
+# Test files of `names`, groups (such as "energetics" or "all") or test files (such as "test_ape_budget.jl"), in the
 # order they run and without repeats
 function test_files(names)
     files = String[]

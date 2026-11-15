@@ -66,6 +66,8 @@ include("model_components.jl")
 include("diagnostics.jl")
 include("reference_state.jl")
 include("sorting.jl")
-include("energetics.jl")
+include("ape_budget.jl")
+include("ke_budget.jl")
+include("bpe_budget.jl")
 
 end # module

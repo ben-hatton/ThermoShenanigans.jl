@@ -215,3 +215,28 @@ function energy_tendency(model)
     conversions = integral(abs, wb) + integral(ε)
     return kinetic + potential, round_off, conversions
 end
+
+# Bytes allocated by evaluating `operation` in one cell, behind a function barrier so that the result is not boxed
+function cell_allocations(operation)
+    operation[3, 3, 3]
+    return @allocated operation[3, 3, 3]
+end
+
+# The interior of a data array of the reference state at (LX, LY, LZ)
+interior_data(data, LX, LY, LZ, grid) = Array(interior(Field{LX, LY, LZ}(grid; data)))
+
+# ∇·j of face fluxes j = (x, y, z) on a regular, Bounded grid, from the interiors including the wall faces
+function divergence(j, grid)
+    Δx, Δy, Δz = xspacings(grid, Center())[1], yspacings(grid, Center())[1], zspacings(grid, Center())[1]
+    jx, jy, jz = map(computed, (j.x, j.y, j.z))
+    return diff(jx, dims = 1) ./ Δx .+ diff(jy, dims = 2) ./ Δy .+ diff(jz, dims = 3) ./ Δz
+end
+
+# ℑ to the cell centres of values on the faces of direction `dims`, including the walls
+center_average(a, dims) = (selectdim(a, dims, 1:size(a, dims)-1) .+ selectdim(a, dims, 2:size(a, dims))) ./ 2
+
+# Whether the components of the face flux j normal to the walls vanish there
+function zero_at_walls(j)
+    jx, jy, jz = map(computed, (j.x, j.y, j.z))
+    return all(iszero, jx[[1, end], :, :]) && all(iszero, jy[:, [1, end], :]) && all(iszero, jz[:, :, [1, end]])
+end
