@@ -10,6 +10,28 @@ ThermoShenanigans.jl is an extension to Oceananigans.jl that implements generic 
 - Keep new implementations to a minimum, relying as much as possible on the existing Oceananigans.jl code
 - Ensure code is suitable for CPU and GPU usage
 
+## Testing
+- After a change, run only the test groups that cover the source files touched, as listed in
+  `test/test_groups.jl` (e.g. `run_tests("energetics")`). Do not run the full suite after every change.
+- Run the full suite (`TEST_GROUP=all`) once, when a task is finished and before giving the commit
+  command. Report its result and wall time.
+- Run tests in one persistent session started with `julia --project -i test/session.jl` (in a Julia
+  REPL tool if one is available), calling `run_tests(...)` and `run_doctests_and_imports()`, so that
+  the compiled tests are reused between runs. Start a new session only after a change to a struct or
+  to the test environment.
+- Doctests and the explicit-imports check run only in the full suite, or when a docstring, export
+  or import changed (`TEST_DOCTESTS_AND_IMPORTS=true`, or `run_doctests_and_imports()` in the session).
+- Keep test grids between 4³ and 8³ and reuse the shared test models in
+  `test/utils_for_runtests.jl`, so that all test files compile one model type. A test that needs a
+  new grid, float type or closure combination must say why in a comment.
+- State in the reply which tests were run and which were skipped.
+- Which test files cover which source files is defined in `test/test_groups.jl`, not here. When a
+  source or test file is added, split, renamed or removed, update `test/test_groups.jl` in the same
+  change. A test in that file checks that every file in `src/` is covered by at least one group.
+- Tests that import internal (unexported) names break when those names change. When renaming or
+  removing an internal function, search `test/` and `examples/` for it and update every use in the
+  same change, keeping assertions and tolerances unchanged.
+
 ## Kernel Functions (GPU compatibility)
 
 - Use `@kernel` / `@index` (KernelAbstractions.jl)
@@ -79,6 +101,7 @@ ThermoShenanigans.jl is an extension to Oceananigans.jl that implements generic 
   
   
 ## Physics
+- The package targets DNS with constant molecular coefficients; do not add support for LES or other closures with closure fields.
 - Keep fluxes and production terms in their general thermodynamic form (e.g. j_θ = -κ_θ (cₚ/π) ∇T). 
   Do not substitute an identity that holds only for the current thermodynamics or definitions; if one 
   exists, state it in a comment and leave the code general.
@@ -94,7 +117,6 @@ ThermoShenanigans.jl is an extension to Oceananigans.jl that implements generic 
 - Use only array operations already used on GPU arrays in Oceananigans or Oceanostics, and cite the file. Anything else goes in GPU_UNVERIFIED.md as a specific risk.
 
 ## Readability and structure
-- Refactors change no results: the budget tests pass at unchanged tolerances.
 - One name, one function: never bind the same local name to different generated functions.
 - @eval only for x/y/z triplets, with the generated names listed in a comment above the loop.
 - Kernel function, docstring and constructor for a diagnostic sit together.

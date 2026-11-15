@@ -318,11 +318,18 @@ julia --project -e 'using Pkg; Pkg.test(julia_args = ["--check-bounds=auto"])'
 
 `Pkg.test()` on its own forces `--check-bounds=yes`, which roughly doubles the time spent compiling the model kernels.
 
-By default this runs a quick core set: the thermodynamic derivatives, and the discrete energy identity and
-$\sigma_\eta \ge 0$ on one model, and a time step. Set `TEST_DOCTESTS_AND_IMPORTS=true` to add the doctests and the
-explicit-imports check, `TEST_GROUP=all` to run the full suite (which includes them), and `TEST_ARCHITECTURE=GPU` to
-also run its architecture tests on a GPU. CI runs the core set with doctests and explicit imports on pull requests, and
-the full suite on `main` and weekly.
+By default this runs a quick core set, the group `basic`: the thermodynamic derivatives, and the discrete energy identity
+and $\sigma_\eta \ge 0$ on one model, and a time step. Other groups, or single test files, are selected with `test_args`,
+
+```bash
+julia --project -e 'using Pkg; Pkg.test(test_args = ["energetics", "test_buoyancy.jl"], julia_args = ["--check-bounds=auto"])'
+```
+
+or with `TEST_GROUP` (space-separated). The groups `thermodynamics`, `buoyancy`, `diffusivity`, `production` and
+`energetics` each run the tests that cover their source files, as listed in `test/test_groups.jl`; `doctests_and_imports`
+runs the doctests and the explicit-imports check (also added by `TEST_DOCTESTS_AND_IMPORTS=true`); and `all` runs the
+full suite, which includes them. Set `TEST_ARCHITECTURE=GPU` to also run the architecture tests on a GPU. CI runs the
+core set with doctests and explicit imports on pull requests, and the full suite on `main` and weekly.
 
 Almost all of the test time is compilation. To keep the compiled tests between runs, start a session with Revise.jl
 installed in the default environment,
@@ -331,7 +338,8 @@ installed in the default environment,
 julia --project -i test/session.jl
 ```
 
-and call `run_tests()`, `run_tests("all")`, `run_tests("test_energetics.jl")` or `run_doctests_and_imports()` as often
+and call `run_tests()`, `run_tests("all")`, `run_tests("energetics")`, `run_tests("test_energetics.jl")` or
+`run_doctests_and_imports()` as often
 as needed; a later call recompiles only what an edit to `src/` or `test/` changed.
 
 The full suite checks every thermodynamic derivative against ForwardDiff, closed forms and Maxwell relations for the
