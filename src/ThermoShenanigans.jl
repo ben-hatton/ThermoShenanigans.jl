@@ -13,7 +13,7 @@ export
     ThermodynamicBuoyancy, ThermodynamicDiffusivity, thermodynamic_model_components,
 
     # Thermodynamic diagnostics
-    thermodynamic_operation, HeightIndependent, viscous_dissipation, θ_production, buoyancy_production,
+    thermodynamic_operation, viscous_dissipation, θ_production, buoyancy_production,
     heating_buoyancy_production, nonlinear_buoyancy_production, entropy_production, potential_energy_conversion,
     θ_flux, salt_flux, buoyancy_flux, buoyancy_work, buoyancy_tendency, advective_buoyancy_tendency,
 

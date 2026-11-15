@@ -72,29 +72,13 @@ required_tracers(::ConstantSalinityThermodynamicBuoyancy) = (:θ,)
     f(θ_and_sᴬ(i, j, k, get_temperature_and_salinity(buoyancy_formulation, fields)...)...,
       znode(i, j, k, grid, Center(), Center(), Center()), buoyancy_formulation.thermodynamics)
 
-"""
-    HeightIndependent(func)
-
-Adapt a function `func(θ, S, thermodynamics)` of θ and S only, such as `∂b∂θ` or `potential_enthalpy`, to the form
-`f(θ, S, z, thermodynamics)` that `thermodynamic_functionᶜᶜᶜ` evaluates.
-"""
-struct HeightIndependent{F}
-    func :: F
-end
-
-@inline (f::HeightIndependent)(θ, S, z, thermodynamics) = f.func(θ, S, thermodynamics)
-
-# θ and S themselves, in the same form
-@inline θ_value(θ, S, z, thermodynamics) = θ
-@inline S_value(θ, S, z, thermodynamics) = S
-
 #####
 ##### Buoyancy force
 #####
 
 # b at (Center, Center, Center); the w equation uses the energy-consistent b̃ below rather than ℑz b
 @inline buoyancy_perturbationᶜᶜᶜ(i, j, k, grid, buoyancy_formulation::ThermodynamicBuoyancy, fields) =
-    buoyancy(θ_and_sᴬ(i, j, k, get_temperature_and_salinity(buoyancy_formulation, fields)...)..., buoyancy_formulation.thermodynamics)
+    thermodynamic_functionᶜᶜᶜ(i, j, k, grid, buoyancy, buoyancy_formulation, fields)
 
 @inline ∂x_b(i, j, k, grid, buoyancy_formulation::ThermodynamicBuoyancy, fields) =
     ∂xᶠᶜᶜ(i, j, k, grid, buoyancy_perturbationᶜᶜᶜ, buoyancy_formulation, fields)
@@ -107,22 +91,22 @@ end
 
 #=
 Energy-consistent buoyancy force at w-points: the discrete-gradient buoyancy
-    b̃ = [δz(b z') - ℑz(b_θ z') δzθ - ℑz(b_S z') δzS] / Δz   at (Center, Center, Face),
-with z' = z - z₀. With centred second-order tracer advection, the buoyancy work Σ w b̃ V then exactly balances the
-advective change of Σ 𝒫(θ, S, z) V whenever h⁰ and b are at most quadratic in (θ, S), when z₀ drops out of b̃.
-For a linear b, b̃ = ℑz b.
+    b̃ = [δz(b z') - ℑz(b_θ z') δzθ - ℑz(b_S z') δzS] / Δz = δz(b z') / Δz - ℑz(b_θ z') ∂zθ - ℑz(b_S z') ∂zS
+at (Center, Center, Face), with z' = z - z₀. ∂zS is zero for constant salinity, by Oceananigans' `∂zᶜᶜᶠ` of a
+`Number` (Operators/derivative_operators.jl). With centred second-order tracer advection, the buoyancy work Σ w b̃ V
+then exactly balances the advective change of Σ 𝒫(θ, S, z) V whenever h⁰ and b are at most quadratic in (θ, S), when
+z₀ drops out of b̃. For a linear b, b̃ = ℑz b.
 =#
-@inline buoyancy_height(θ, S, z, thermodynamics)   = buoyancy(θ, S, thermodynamics) * height_above_z₀(z, thermodynamics)
-@inline buoyancy_θ_height(θ, S, z, thermodynamics) = ∂b∂θ(θ, S, thermodynamics) * height_above_z₀(z, thermodynamics)
-@inline buoyancy_S_height(θ, S, z, thermodynamics) = ∂b∂S(θ, S, thermodynamics) * height_above_z₀(z, thermodynamics)
+@inline buoyancy_height(θ, S, z, thermodynamics)   = buoyancy(θ, S, z, thermodynamics) * height_above_z₀(z, thermodynamics)
+@inline buoyancy_θ_height(θ, S, z, thermodynamics) = ∂b∂θ(θ, S, z, thermodynamics) * height_above_z₀(z, thermodynamics)
+@inline buoyancy_S_height(θ, S, z, thermodynamics) = ∂b∂S(θ, S, z, thermodynamics) * height_above_z₀(z, thermodynamics)
 
-@inline consistent_buoyancyᶜᶜᶠ(i, j, k, grid, buoyancy_formulation, fields) =
-    (δzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, buoyancy_height, buoyancy_formulation, fields) -
-     ℑzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, buoyancy_θ_height, buoyancy_formulation, fields) *
-     δzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, θ_value, buoyancy_formulation, fields) -
-     ℑzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, buoyancy_S_height, buoyancy_formulation, fields) *
-     δzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, S_value, buoyancy_formulation, fields)) /
-    Δzᶜᶜᶠ(i, j, k, grid)
+@inline function consistent_buoyancyᶜᶜᶠ(i, j, k, grid, buoyancy_formulation, fields)
+    θ, S = get_temperature_and_salinity(buoyancy_formulation, fields)
+    return δzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, buoyancy_height, buoyancy_formulation, fields) / Δzᶜᶜᶠ(i, j, k, grid) -
+           ℑzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, buoyancy_θ_height, buoyancy_formulation, fields) * ∂zᶜᶜᶠ(i, j, k, grid, θ) -
+           ℑzᵃᵃᶠ(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, buoyancy_S_height, buoyancy_formulation, fields) * ∂zᶜᶜᶠ(i, j, k, grid, S)
+end
 
 # Oceananigans uses z_dot_g_bᶜᶜᶠ for both the w equation and the hydrostatic pressure anomaly (gravity along -z only)
 @inline z_dot_g_bᶜᶜᶠ(i, j, k, grid, buoyancy_force::BuoyancyForce{<:ThermodynamicBuoyancy, NegativeZDirection}, fields) =

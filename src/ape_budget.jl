@@ -119,7 +119,7 @@ background fields, are not included.
 
 # b_S ∇·(u S), zero for constant salinity
 @inline salt_advection_buoyancy_tendencyᶜᶜᶜ(i, j, k, grid, advection, buoyancy_formulation, fields) =
-    thermodynamic_functionᶜᶜᶜ(i, j, k, grid, HeightIndependent(∂b∂S), buoyancy_formulation, fields) *
+    thermodynamic_functionᶜᶜᶜ(i, j, k, grid, ∂b∂S, buoyancy_formulation, fields) *
     div_Uc(i, j, k, grid, advection.S, fields, fields.S)
 
 @inline salt_advection_buoyancy_tendencyᶜᶜᶜ(i, j, k, grid, advection, ::ConstantSalinityThermodynamicBuoyancy, fields) =
@@ -127,7 +127,7 @@ background fields, are not included.
 
 # ADV_b = - b_θ ∇·(u θ) - b_S ∇·(u S), with the model's advection schemes
 @inline advective_buoyancy_tendencyᶜᶜᶜ(i, j, k, grid, advection, buoyancy_formulation, fields) =
-    - thermodynamic_functionᶜᶜᶜ(i, j, k, grid, HeightIndependent(∂b∂θ), buoyancy_formulation, fields) *
+    - thermodynamic_functionᶜᶜᶜ(i, j, k, grid, ∂b∂θ, buoyancy_formulation, fields) *
       div_Uc(i, j, k, grid, advection.θ, fields, fields.θ) -
     salt_advection_buoyancy_tendencyᶜᶜᶜ(i, j, k, grid, advection, buoyancy_formulation, fields)
 

@@ -62,9 +62,9 @@ for (dir, difference_to_face, derivative_to_face, average_to_face, face_area, fa
 
         # j_b = ℑ(b_θ) j_θ + ℑ(b_S) j_S
         @inline $buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) =
-            $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, HeightIndependent(∂b∂θ), buoyancy_formulation, fields) *
+            $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, ∂b∂θ, buoyancy_formulation, fields) *
             $masked_θ_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) +
-            $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, HeightIndependent(∂b∂S), buoyancy_formulation, fields) *
+            $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, ∂b∂S, buoyancy_formulation, fields) *
             $masked_salt_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields)
 
         # κ_S ℑ((∂μ/∂S)_T / T) (∂S + Γ_S)², zero for constant salinity
@@ -111,7 +111,7 @@ buoyancy) holding the viscous closure and its fields, the `ThermodynamicDiffusiv
 
 # σ_b_nonlin = j_θ·∇b_θ + j_S·∇b_S, nonzero only for a nonlinear equation of state
 @inline nonlinear_buoyancy_productionᶜᶜᶜ(i, j, k, grid, clock, fields, parameters) =
-    flux_contractionᶜᶜᶜ(i, j, k, grid, HeightIndependent(∂b∂θ), HeightIndependent(∂b∂S), parameters.diffusivity,
+    flux_contractionᶜᶜᶜ(i, j, k, grid, ∂b∂θ, ∂b∂S, parameters.diffusivity,
                         parameters.buoyancy, fields)
 
 #=
@@ -126,7 +126,7 @@ Used directly as the θ forcing.
 
 # σ_b_heating = b_θ σ_θ, the buoyancy production by the θ source
 @inline heating_buoyancy_productionᶜᶜᶜ(i, j, k, grid, clock, fields, parameters) =
-    thermodynamic_functionᶜᶜᶜ(i, j, k, grid, HeightIndependent(∂b∂θ), parameters.buoyancy, fields) *
+    thermodynamic_functionᶜᶜᶜ(i, j, k, grid, ∂b∂θ, parameters.buoyancy, fields) *
     θ_productionᶜᶜᶜ(i, j, k, grid, clock, fields, parameters)
 
 # σ_b = σ_b_heating + σ_b_nonlin, so that Db/Dt = σ_b - ∇·j_b

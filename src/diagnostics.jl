@@ -36,8 +36,7 @@ $(TYPEDSIGNATURES)
 
 Return the `KernelFunctionOperation` at (Center, Center, Center) of the thermodynamic function `f(θ, S, z,
 thermodynamics)` of `model`, such as `potential_energy` (𝒫 = h⁰ - b (z - z₀) + g₀ z₀), `temperature` (T), `exner` (π),
-`chemical_potential_analogue` (m) or `chemical_potential` (μ). A function of θ and S only, such as the internal energy
-ℐ = h⁰, is wrapped in [`HeightIndependent`](@ref): `thermodynamic_operation(model, HeightIndependent(potential_enthalpy))`.
+`chemical_potential_analogue` (m), `chemical_potential` (μ) or `potential_enthalpy`, the internal energy ℐ = h⁰.
 
 ```jldoctest
 julia> using Oceananigans, ThermoShenanigans

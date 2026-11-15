@@ -6,7 +6,7 @@ function test_diffusivity()
             for (θ, S, z) in states
                 T_isotherm = temperature(θ, S, z, thermodynamics)
                 @test - ∂T∂S(θ, S, z, thermodynamics) / ∂T∂θ(θ, S, z, thermodynamics) ≈ derivative(S -> isothermal_θ(T_isotherm, S, z, thermodynamics; θ), S) atol=1e-12
-                @test isothermal_∂b∂S(θ, S, z, thermodynamics) ≈ derivative(S -> buoyancy(isothermal_θ(T_isotherm, S, z, thermodynamics; θ), S, thermodynamics), S)
+                @test isothermal_∂b∂S(θ, S, z, thermodynamics) ≈ derivative(S -> buoyancy(isothermal_θ(T_isotherm, S, z, thermodynamics; θ), S, z, thermodynamics), S)
                 @test isothermal_∂μ∂S(θ, S, z, thermodynamics) ≈ derivative(S -> chemical_potential(isothermal_θ(T_isotherm, S, z, thermodynamics; θ), S, z, thermodynamics), S)
                 # Maxwell relation (∂μ/∂z)_T = - (∂b/∂S)_T
                 @test derivative(z -> chemical_potential(isothermal_θ(T_isotherm, S, z, thermodynamics; θ), S, z, thermodynamics), z) ≈ - isothermal_∂b∂S(θ, S, z, thermodynamics)

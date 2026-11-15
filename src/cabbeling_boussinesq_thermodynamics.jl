@@ -112,50 +112,50 @@ end
 ##### Buoyancy
 #####
 
-@inline buoyancy(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics) =
+@inline buoyancy(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics) =
     thermodynamics.gravitational_acceleration * (thermodynamics.thermal_expansion * (θ - thermodynamics.reference_temperature) +
                                                  thermodynamics.cabbeling_coefficient * (θ - thermodynamics.reference_temperature)^2 / 2 -
                                                  thermodynamics.haline_contraction * (S - thermodynamics.reference_salinity))
 
-@inline ∂b∂θ(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics) =
+@inline ∂b∂θ(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics) =
     thermodynamics.gravitational_acceleration * (thermodynamics.thermal_expansion +
                                                  thermodynamics.cabbeling_coefficient * (θ - thermodynamics.reference_temperature))
 
-@inline ∂b∂S(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics) =
+@inline ∂b∂S(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics) =
     - thermodynamics.gravitational_acceleration * thermodynamics.haline_contraction
 
-@inline ∂²b∂θ²(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics) =
+@inline ∂²b∂θ²(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics) =
     thermodynamics.gravitational_acceleration * thermodynamics.cabbeling_coefficient
 
-@inline ∂²b∂θ∂S(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics) = zero(θ)
-@inline ∂²b∂S²(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics)  = zero(θ)
+@inline ∂²b∂θ∂S(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics) = zero(θ)
+@inline ∂²b∂S²(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics)  = zero(θ)
 
 #####
 ##### Potential enthalpy
 #####
 
-@inline potential_enthalpy(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics) =
+@inline potential_enthalpy(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics) =
     thermodynamics.reference_heat_capacity * (θ - thermodynamics.reference_temperature)
 
-@inline ∂h⁰∂θ(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics)    = thermodynamics.reference_heat_capacity
-@inline ∂h⁰∂S(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics)    = zero(θ)
-@inline ∂²h⁰∂θ²(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics)  = zero(θ)
-@inline ∂²h⁰∂θ∂S(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics) = zero(θ)
-@inline ∂²h⁰∂S²(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics)  = zero(θ)
+@inline ∂h⁰∂θ(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics)    = thermodynamics.reference_heat_capacity
+@inline ∂h⁰∂S(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics)    = zero(θ)
+@inline ∂²h⁰∂θ²(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics)  = zero(θ)
+@inline ∂²h⁰∂θ∂S(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics) = zero(θ)
+@inline ∂²h⁰∂S²(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics)  = zero(θ)
 
 #####
 ##### Entropy
 #####
 
-@inline entropy(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics) =
+@inline entropy(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics) =
     thermodynamics.reference_heat_capacity * log(θ / thermodynamics.reference_temperature) -
     thermodynamics.saline_entropy_constant * (S * log(S / thermodynamics.reference_salinity) - (S - thermodynamics.reference_salinity))
 
-@inline ∂η⁰∂θ(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics) = thermodynamics.reference_heat_capacity / θ
+@inline ∂η⁰∂θ(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics) = thermodynamics.reference_heat_capacity / θ
 
-@inline ∂η⁰∂S(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics) =
+@inline ∂η⁰∂S(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics) =
     - thermodynamics.saline_entropy_constant * log(S / thermodynamics.reference_salinity)
 
-@inline ∂²η⁰∂θ²(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics)  = - thermodynamics.reference_heat_capacity / θ^2
-@inline ∂²η⁰∂θ∂S(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics) = zero(θ)
-@inline ∂²η⁰∂S²(θ, S, thermodynamics::CabbelingBoussinesqThermodynamics)  = - thermodynamics.saline_entropy_constant / S
+@inline ∂²η⁰∂θ²(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics)  = - thermodynamics.reference_heat_capacity / θ^2
+@inline ∂²η⁰∂θ∂S(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics) = zero(θ)
+@inline ∂²η⁰∂S²(θ, S, z, thermodynamics::CabbelingBoussinesqThermodynamics)  = - thermodynamics.saline_entropy_constant / S

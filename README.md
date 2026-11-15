@@ -228,8 +228,9 @@ $h^0$, $\eta^0$ and $\mu - m$ vanish at $(T_0, S_0)$.
 ### Your own thermodynamics
 
 Subtype `AbstractBoussinesqThermodynamics` and add methods for $b$, $h^0$, $\eta^0$ and their first and second
-derivatives (18 functions), each called as `f(θ, S, thermodynamics)`, and for the reference pressure height $z_0$ and
-the gravitational acceleration $g$ included in $b$, each called as `f(thermodynamics)`:
+derivatives (18 functions), each called as `f(θ, S, z, thermodynamics)` like every thermodynamic function and
+independent of the height `z`, and for the reference pressure height $z_0$ and the gravitational acceleration $g$
+included in $b$, each called as `f(thermodynamics)`:
 
 ```julia
 using ThermoShenanigans
@@ -244,8 +245,8 @@ struct MyThermodynamics{FT} <: AbstractBoussinesqThermodynamics
     # other parameters...
 end
 
-@inline buoyancy(θ, S, thermodynamics::MyThermodynamics) = ...
-@inline ∂b∂θ(θ, S, thermodynamics::MyThermodynamics)     = ...
+@inline buoyancy(θ, S, z, thermodynamics::MyThermodynamics) = ...
+@inline ∂b∂θ(θ, S, z, thermodynamics::MyThermodynamics)     = ...
 # ... and so on for all 18 functions of θ and S
 
 @inline reference_pressure_height(thermodynamics::MyThermodynamics)  = thermodynamics.reference_pressure_height

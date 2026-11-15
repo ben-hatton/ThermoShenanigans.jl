@@ -61,20 +61,20 @@ import ThermoShenanigans: buoyancy, ∂b∂θ, ∂b∂S, ∂²b∂θ², ∂²b�
                           reference_pressure_height, gravitational_acceleration
 
 for f in (:∂b∂S, :∂²b∂θ², :∂²b∂θ∂S, :∂²b∂S², :∂²h⁰∂θ², :∂²h⁰∂S², :∂²η⁰∂θ∂S)
-    @eval $f(θ, S, ::CoupledTestThermodynamics) = zero(θ)
+    @eval $f(θ, S, z, ::CoupledTestThermodynamics) = zero(θ)
 end
 
-buoyancy(θ, S, thermodynamics::CoupledTestThermodynamics)           = thermodynamics.gα * θ
-∂b∂θ(θ, S, thermodynamics::CoupledTestThermodynamics)               = thermodynamics.gα
-potential_enthalpy(θ, S, thermodynamics::CoupledTestThermodynamics) = thermodynamics.c * θ + thermodynamics.a * θ * S
-∂h⁰∂θ(θ, S, thermodynamics::CoupledTestThermodynamics)              = thermodynamics.c + thermodynamics.a * S
-∂h⁰∂S(θ, S, thermodynamics::CoupledTestThermodynamics)              = thermodynamics.a * θ
-∂²h⁰∂θ∂S(θ, S, thermodynamics::CoupledTestThermodynamics)           = thermodynamics.a
-entropy(θ, S, thermodynamics::CoupledTestThermodynamics)            = thermodynamics.c * log(θ) - S * (log(S) - 1)
-∂η⁰∂θ(θ, S, thermodynamics::CoupledTestThermodynamics)              = thermodynamics.c / θ
-∂η⁰∂S(θ, S, thermodynamics::CoupledTestThermodynamics)              = - log(S)
-∂²η⁰∂θ²(θ, S, thermodynamics::CoupledTestThermodynamics)            = - thermodynamics.c / θ^2
-∂²η⁰∂S²(θ, S, thermodynamics::CoupledTestThermodynamics)            = - 1 / S
+buoyancy(θ, S, z, thermodynamics::CoupledTestThermodynamics)           = thermodynamics.gα * θ
+∂b∂θ(θ, S, z, thermodynamics::CoupledTestThermodynamics)               = thermodynamics.gα
+potential_enthalpy(θ, S, z, thermodynamics::CoupledTestThermodynamics) = thermodynamics.c * θ + thermodynamics.a * θ * S
+∂h⁰∂θ(θ, S, z, thermodynamics::CoupledTestThermodynamics)              = thermodynamics.c + thermodynamics.a * S
+∂h⁰∂S(θ, S, z, thermodynamics::CoupledTestThermodynamics)              = thermodynamics.a * θ
+∂²h⁰∂θ∂S(θ, S, z, thermodynamics::CoupledTestThermodynamics)           = thermodynamics.a
+entropy(θ, S, z, thermodynamics::CoupledTestThermodynamics)            = thermodynamics.c * log(θ) - S * (log(S) - 1)
+∂η⁰∂θ(θ, S, z, thermodynamics::CoupledTestThermodynamics)              = thermodynamics.c / θ
+∂η⁰∂S(θ, S, z, thermodynamics::CoupledTestThermodynamics)              = - log(S)
+∂²η⁰∂θ²(θ, S, z, thermodynamics::CoupledTestThermodynamics)            = - thermodynamics.c / θ^2
+∂²η⁰∂S²(θ, S, z, thermodynamics::CoupledTestThermodynamics)            = - 1 / S
 
 reference_pressure_height(::CoupledTestThermodynamics)  = 0.0
 gravitational_acceleration(::CoupledTestThermodynamics) = 9.81
@@ -92,9 +92,9 @@ function isothermal_θ(T_isotherm, S, z, thermodynamics; θ = T_isotherm + zero(
 end
 
 # θ on the isentrope η⁰(θ, S) = η₀ (Newton; differentiable with ForwardDiff)
-function isentropic_θ(η₀, S, thermodynamics; θ = 283 + zero(η₀ * S))
+function isentropic_θ(η₀, S, z, thermodynamics; θ = 283 + zero(η₀ * S))
     for _ in 1:30
-        θ -= (entropy(θ, S, thermodynamics) - η₀) / ∂η⁰∂θ(θ, S, thermodynamics)
+        θ -= (entropy(θ, S, z, thermodynamics) - η₀) / ∂η⁰∂θ(θ, S, z, thermodynamics)
     end
     return θ
 end

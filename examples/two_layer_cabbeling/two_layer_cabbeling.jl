@@ -40,10 +40,11 @@ thermodynamics = CabbelingBoussinesqThermodynamics(thermal_expansion = α, halin
                                                    reference_temperature = θ_deep, reference_salinity = S_deep,
                                                    reference_heat_capacity = 3991.86795711963, gravitational_acceleration = g)
 
-# The shallow layer is lighter than the deep layer, but an even mixture of the two is denser:
+# At the interface, z = -0.5 m, the shallow layer is lighter than the deep layer, but an even mixture of the two is denser:
 
-b_shallow = buoyancy(θ_shallow, S_shallow, thermodynamics)
-b_mixture = buoyancy((θ_shallow + θ_deep) / 2, (S_shallow + S_deep) / 2, thermodynamics)
+z_interface = -0.5
+b_shallow = buoyancy(θ_shallow, S_shallow, z_interface, thermodynamics)
+b_mixture = buoyancy((θ_shallow + θ_deep) / 2, (S_shallow + S_deep) / 2, z_interface, thermodynamics)
 @printf("b(shallow) - b(deep) = %.2e m s⁻², b(mixture) - b(deep) = %.2e m s⁻²\n", b_shallow, b_mixture)
 
 # ## Model

@@ -23,7 +23,7 @@ function test_buoyancy()
 
             # b at (C, C, C) matches the point-wise buoyancy
             b = field(buoyancy_operation(model))
-            @test b[i, j, k] ≈ buoyancy(θ[i, j, k], S[i, j, k], cabbeling)
+            @test b[i, j, k] ≈ buoyancy(θ[i, j, k], S[i, j, k], z, cabbeling)
 
             # T at (C, C, C) uses the height of the cell centre
             T = field(thermodynamic_operation(model, temperature))
@@ -44,7 +44,7 @@ function test_buoyancy()
 
             set!(model, θ = (x, y, z) -> 283 + 2 * (1 + z / 100))
             θ = model.tracers.θ
-            @test field(buoyancy_operation(model))[i, j, k] ≈ buoyancy(θ[i, j, k], 0.035, cabbeling)
+            @test field(buoyancy_operation(model))[i, j, k] ≈ buoyancy(θ[i, j, k], 0.035, z, cabbeling)
             @test field(thermodynamic_operation(model, temperature))[i, j, k] ≈ temperature(θ[i, j, k], 0.035, z, cabbeling)
         end
 

@@ -37,10 +37,9 @@ const reference_fluxes = (ape_flux, ke_flux, bpe_flux)
 
 # The functions named in the docstring of `thermodynamic_operation`, and the internal energy ℐ = h⁰
 const operation_functions = (potential_energy, temperature, exner, chemical_potential_analogue, chemical_potential,
-                             HeightIndependent(potential_enthalpy))
+                             potential_enthalpy)
 
 function_label(f) = string(nameof(f))
-function_label(f::HeightIndependent) = string("HeightIndependent(", nameof(f.func), ")")
 
 # `label => diagnostic` for every exported diagnostic of `model`, with one z★ shared by those of the reference state
 function exported_diagnostics(model)
@@ -123,11 +122,10 @@ end
 
 function test_architectures()
     @testset "Every exported diagnostic is compared between architectures" begin
-        # Exported names that are not diagnostics: types, thermodynamic functions f(θ, S, thermodynamics) and
-        # f(θ, S, z, thermodynamics), and the constructor of the model components
+        # Exported names that are not diagnostics: types, thermodynamic functions f(θ, S, z, thermodynamics), and the
+        # constructor of the model components
         thermodynamics_type = typeof(cabbeling)
-        is_thermodynamic_function(f) = hasmethod(f, Tuple{Float64, Float64, thermodynamics_type}) ||
-                                       hasmethod(f, Tuple{Float64, Float64, Float64, thermodynamics_type})
+        is_thermodynamic_function(f) = hasmethod(f, Tuple{Float64, Float64, Float64, thermodynamics_type})
         exported = filter(name -> name != :ThermoShenanigans, names(ThermoShenanigans))
         exported_values = map(name -> getproperty(ThermoShenanigans, name), exported)
         is_diagnostic = map(value -> !(value isa Type || value === thermodynamic_model_components ||

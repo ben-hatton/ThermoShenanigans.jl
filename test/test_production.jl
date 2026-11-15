@@ -1,5 +1,5 @@
 using Oceananigans.TurbulenceClosures: ∂ⱼ_τ₁ⱼ, ∂ⱼ_τ₂ⱼ, ∂ⱼ_τ₃ⱼ
-using ThermoShenanigans: flux_contractionᶜᶜᶜ, thermodynamic_functionᶜᶜᶜ, θ_value, HeightIndependent
+using ThermoShenanigans: flux_contractionᶜᶜᶜ, thermodynamic_functionᶜᶜᶜ
 
 function test_production()
     @testset "Irreversible production" begin
@@ -56,11 +56,12 @@ function test_production()
             σ_b_nonlin = computed(nonlinear_buoyancy_production(model))
 
             # σ_b_nonlin = j_θ·∇b_θ + j_S·∇b_S = g γ j_θ·∇θ for the cabbeling equation of state
+            θ_itself(θ, S, z, thermodynamics) = θ
             zero_value(θ, S, z, thermodynamics) = zero(θ)
-            j_θ_dot_∇θ = KernelFunctionOperation{Center, Center, Center}(flux_contractionᶜᶜᶜ, grid, θ_value, zero_value, closure, buoyancy_formulation, C)
+            j_θ_dot_∇θ = KernelFunctionOperation{Center, Center, Center}(flux_contractionᶜᶜᶜ, grid, θ_itself, zero_value, closure, buoyancy_formulation, C)
             @test σ_b_nonlin ≈ thermodynamics.gravitational_acceleration * thermodynamics.cabbeling_coefficient .* computed(j_θ_dot_∇θ) rtol = 1e-12 atol = 1e-20
 
-            b_θ = computed(KernelFunctionOperation{Center, Center, Center}(thermodynamic_functionᶜᶜᶜ, grid, HeightIndependent(∂b∂θ), buoyancy_formulation, C))
+            b_θ = computed(KernelFunctionOperation{Center, Center, Center}(thermodynamic_functionᶜᶜᶜ, grid, ∂b∂θ, buoyancy_formulation, C))
             @test computed(buoyancy_production(model)) ≈ b_θ .* computed(θ_production(model)) .+ σ_b_nonlin
         end
 

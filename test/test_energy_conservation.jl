@@ -16,7 +16,9 @@ function test_energy_conservation()
             set_random_state!(model)
             C, buoyancy_formulation = merge(model.velocities, model.tracers), model.buoyancy.formulation
             θ, S = model.tracers
-            ℑb(i, j, k) = (buoyancy(θ[i, j, k], S[i, j, k], thermodynamics) + buoyancy(θ[i, j, k-1], S[i, j, k-1], thermodynamics)) / 2
+            z = znodes(grid, Center())
+            b(i, j, k) = buoyancy(θ[i, j, k], S[i, j, k], z[k], thermodynamics)
+            ℑb(i, j, k) = (b(i, j, k) + b(i, j, k-1)) / 2
             gγ = thermodynamics isa CabbelingBoussinesqThermodynamics ? thermodynamics.gravitational_acceleration * thermodynamics.cabbeling_coefficient : 0.0
 
             for i in 1:6, j in 1:6, k in 2:6

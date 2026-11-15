@@ -38,8 +38,8 @@ function test_bpe_budget()
             # A step short of the first time at which two cells swap order, over which z★ is constant
             b = vec(computed(KernelFunctionOperation{Center, Center, Center}(buoyancy_perturbationᶜᶜᶜ, grid,
                                                                              model.buoyancy.formulation, model.tracers)))
-            Ḃ = vec(computed(thermodynamic_operation(model, HeightIndependent(∂b∂θ))) .* Gθ .+
-                    computed(thermodynamic_operation(model, HeightIndependent(∂b∂S))) .* GS)
+            Ḃ = vec(computed(thermodynamic_operation(model, ∂b∂θ)) .* Gθ .+
+                    computed(thermodynamic_operation(model, ∂b∂S)) .* GS)
             order = sortperm(b)
             δt = min(1e-4, minimum(diff(b[order]) ./ abs.(diff(Ḃ[order]))) / 10)
             θ, S = Array(interior(model.tracers.θ)), Array(interior(model.tracers.S))

@@ -33,7 +33,7 @@ are not included.
 $(TYPEDSIGNATURES)
 
 Return the background potential energy ℬ = 𝒫(θ, S, z★) - 𝒲★ of `model` at (Center, Center, Center), so that
-𝒜 + ℬ = 𝒫. The internal energy ℐ = h⁰, `thermodynamic_operation(model, HeightIndependent(potential_enthalpy))`,
+𝒜 + ℬ = 𝒫. The internal energy ℐ = h⁰, `thermodynamic_operation(model, potential_enthalpy)`,
 lies entirely in ℬ = ℐ + 𝒢★ + g₀ z₀; see [`background_gravitational_energy`](@ref).
 """
 function background_potential_energy(model, z★::ReferenceHeightField)

@@ -26,7 +26,7 @@ function test_reference_state()
                                                    background_potential_energy(model, z★_field), reference_work(z★_field),
                                                    reference_displacement(z★_field), background_gravitational_energy(model, z★_field)))
             𝒫 = computed(thermodynamic_operation(model, potential_energy))
-            ℐ = computed(thermodynamic_operation(model, HeightIndependent(potential_enthalpy)))
+            ℐ = computed(thermodynamic_operation(model, potential_enthalpy))
             b = computed(KernelFunctionOperation{Center, Center, Center}(buoyancy_perturbationᶜᶜᶜ, grid, model.buoyancy.formulation,
                                                                          model.tracers))
 
@@ -52,7 +52,7 @@ function test_reference_state()
                 z★ = reference_height(model)
                 return map(computed, (available_potential_energy(z★), background_gravitational_energy(model, z★),
                                       background_potential_energy(model, z★),
-                                      thermodynamic_operation(model, HeightIndependent(potential_enthalpy))))
+                                      thermodynamic_operation(model, potential_enthalpy)))
             end
             𝒜, 𝒢★, ℬ, ℐ = reservoirs(reference)
             𝒜′, 𝒢★′, ℬ′, ℐ′ = reservoirs(translated)
