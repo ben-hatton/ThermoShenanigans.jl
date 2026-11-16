@@ -136,6 +136,31 @@ function translated_models(; shift = 10)
     return models
 end
 
+# On the CPU in Float64 these have the types of the other test models, so time stepping compiles only once
+architecture_grid(arch, FT) = RectilinearGrid(arch, FT, size = (4, 4, 4), extent = (1, 1, 1), topology = (Bounded, Bounded, Bounded))
+architecture_thermodynamics(FT) = CabbelingBoussinesqThermodynamics(FT; cabbeling_coefficient = 1e-5, parameters...)
+
+# The Fickian ScalarDiffusivity(ν, κ) of consistent = false is the closure under test: a model type of its own
+fickian_model(grid, thermodynamics; kwargs...) = component_model(grid, thermodynamics; consistent = false, kwargs...)
+
+# The constant-salinity Fickian model, with κ = (; θ = κ_θ) and no S: a model type of its own, for the zero salt flux
+fickian_constant_salinity_model(grid) = fickian_model(grid, cabbeling; tracers = (:θ,), constant_salinity = 0.035)
+
+# Labels, as in `exported_diagnostics`, of the diagnostics that a Fickian model refuses
+const fickian_refused = ("entropy_production", "potential_energy_conversion", "thermodynamic_operation(potential_energy)",
+                         "background_potential_energy", "bpe_flux", "bpe_advection", "spurious_bpe_production")
+
+# `build()` throws the `MethodError` of the diagnostic `f` on the Fickian `ScalarDiffusivity` of its model
+function test_refused(f, build)
+    exception = try
+        build()
+        nothing
+    catch caught
+        caught
+    end
+    @test exception isa MethodError && exception.f === f && exception.args[1] isa ScalarDiffusivity
+end
+
 # Prescribed fluxes of θ and S at the top and bottom (positive upwards), and a passive tracer c
 const flux_bc_values = (θ = (top = 1e-4, bottom = -2e-4), S = (top = -3e-6, bottom = 1e-6))
 
@@ -240,10 +265,14 @@ function energy_tendency(model)
     return kinetic + potential, round_off, conversions
 end
 
+# The indices of the cell (3, 3, 3) of `operation`, at index 1 in its reduced (`Nothing`) directions
+cell_indices(operation) = map(L -> L === Nothing ? 1 : 3, location(operation))
+
 # Bytes allocated by evaluating `operation` in one cell, behind a function barrier so that the result is not boxed
 function cell_allocations(operation)
-    operation[3, 3, 3]
-    return @allocated operation[3, 3, 3]
+    i, j, k = cell_indices(operation)
+    operation[i, j, k]
+    return @allocated operation[i, j, k]
 end
 
 # The interior of a data array of the reference state at (LX, LY, LZ)
@@ -263,4 +292,69 @@ center_average(a, dims) = (selectdim(a, dims, 1:size(a, dims)-1) .+ selectdim(a,
 function zero_at_walls(j)
     jx, jy, jz = map(computed, (j.x, j.y, j.z))
     return all(iszero, jx[[1, end], :, :]) && all(iszero, jy[:, [1, end], :]) && all(iszero, jz[:, :, [1, end]])
+end
+
+# Every exported diagnostic
+
+# Grouped by their arguments: the model, the reference height z★, or both. Face fluxes return their (x, y, z) components.
+const model_diagnostics = (viscous_dissipation, θ_production, buoyancy_production, heating_buoyancy_production,
+                           nonlinear_buoyancy_production, entropy_production, potential_energy_conversion, buoyancy_work,
+                           buoyancy_tendency, advective_buoyancy_tendency, kinetic_energy, ke_advection)
+const model_fluxes = (θ_flux, salt_flux, buoyancy_flux)
+const reference_state_diagnostics = (reference_displacement, reference_potential, reference_buoyancy, reference_work,
+                                     available_potential_energy)
+const reference_diagnostics = (background_potential_energy, background_gravitational_energy, ape_production,
+                               heating_ape_production, nonlinear_ape_production, ape_dissipation, ape_advection,
+                               available_buoyancy_work, spurious_ape_production, reference_tendency_work, bpe_advection,
+                               spurious_bpe_production)
+const reference_fluxes = (ape_flux, ke_flux, bpe_flux)
+
+# The functions named in the docstring of `thermodynamic_operation`, and the internal energy ℐ = h⁰
+const operation_functions = (potential_energy, temperature, exner, chemical_potential_analogue, chemical_potential,
+                             potential_enthalpy)
+
+function_label(f) = string(nameof(f))
+
+#=
+`label => diagnostic` for every exported diagnostic of `model` but those labelled in `refused`, with one z★ shared by
+those of the reference state. Thermodynamic operations are labelled `"thermodynamic_operation(name)"`, and the
+components of a face flux `"name.x"`, `"name.y"` and `"name.z"`, skipped together by the name of the flux.
+=#
+function exported_diagnostics(model; refused = ())
+    z★ = reference_height(model)
+    diagnostics = Pair{String, Any}["reference_height" => z★]
+    is_kept(label) = !(label in refused)
+
+    for f in operation_functions
+        label = "thermodynamic_operation($(function_label(f)))"
+        is_kept(label) && push!(diagnostics, label => thermodynamic_operation(model, f))
+    end
+
+    for diagnostic in model_diagnostics
+        is_kept(function_label(diagnostic)) && push!(diagnostics, function_label(diagnostic) => diagnostic(model))
+    end
+
+    for diagnostic in reference_state_diagnostics
+        is_kept(function_label(diagnostic)) && push!(diagnostics, function_label(diagnostic) => diagnostic(z★))
+    end
+
+    for diagnostic in reference_diagnostics
+        is_kept(function_label(diagnostic)) && push!(diagnostics, function_label(diagnostic) => diagnostic(model, z★))
+    end
+
+    for flux in model_fluxes
+        is_kept(function_label(flux)) || continue
+        for (component, operation) in pairs(flux(model))
+            push!(diagnostics, "$(function_label(flux)).$component" => operation)
+        end
+    end
+
+    for flux in reference_fluxes
+        is_kept(function_label(flux)) || continue
+        for (component, operation) in pairs(flux(model, z★))
+            push!(diagnostics, "$(function_label(flux)).$component" => operation)
+        end
+    end
+
+    return diagnostics
 end

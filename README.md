@@ -211,6 +211,11 @@ $$
 \sigma_\theta = 0.
 $$
 
+Its dynamics never use $h^0$ or $z_0$, so that of the potential-type energies only the available potential energy
+$\mathcal{A}$ and the background gravitational energy $\mathcal{G}_\star$ are defined for it. The docstring of
+`thermodynamic_model_components` lists the diagnostics that a Fickian model supports, those that are identically zero
+for it, and those that it refuses with a `MethodError`.
+
 ### Built-in thermodynamics
 
 `CabbelingBoussinesqThermodynamics` has $\theta$ the absolute potential temperature (K) and $S$ in kg/kg:
@@ -265,8 +270,10 @@ your own.
 ## Discretisation
 
 All thermodynamic functions are evaluated at cell centres from the centred $\theta$, $S$ and $z$, and then
-differenced or interpolated to faces. The fluxes are zero at walls, where Oceananigans applies the boundary
-conditions.
+differenced or interpolated to faces. The diagnostic fluxes are zero at walls, where Oceananigans applies the
+boundary conditions. For the consistent closure these are also the model's fluxes; the Fickian closure of
+`consistent = false` carries the wall fluxes of `ValueBoundaryCondition` and `GradientBoundaryCondition`, which the
+diagnostics exclude.
 
 The discrete equations conserve energy exactly (up to round-off and the time-stepping error) because of three choices:
 
@@ -294,8 +301,9 @@ $\sigma_\theta$ evaluates $\varepsilon$ without closure fields, so momentum clos
 
 **Boundary conditions.** Wall fluxes of $\theta$ and $S$ are set only by `FluxBoundaryCondition` (the default is
 no flux); `ValueBoundaryCondition` and `GradientBoundaryCondition` are not supported with the consistent closure
-(they are with `consistent = false`). A prescribed flux is a flux of $\theta$, not of heat: the energy input is
-$\pi Q_\theta + m Q_S$ per unit area at the boundary cell, so a heat flux $Q_H$ corresponds to
+(they are with `consistent = false`, and the diagnostics then exclude their wall fluxes). A prescribed flux is a flux
+of $\theta$, not of heat: the energy input is $\pi Q_\theta + m Q_S$ per unit area at the boundary cell, so a heat
+flux $Q_H$ corresponds to
 $Q_\theta = Q_H / (\rho_0 \pi)$.
 
 ## Examples

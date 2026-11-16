@@ -5,9 +5,13 @@ function test_ape_budget()
         z = reshape(znodes(grid, Center()), 1, 1, Nz)
         V = cell_volumes(CenterField(grid))
 
-        @testset "APE budget [$label]" for (label, thermodynamics) in (("linear", linear), ("cabbeling", cabbeling))
-            model = component_model(grid, thermodynamics)
-            set_random_state!(model)
+        cases = (("linear", linear, component_model), ("cabbeling", cabbeling, component_model),
+                 ("Fickian, linear", linear, fickian_model), ("Fickian, cabbeling", cabbeling, fickian_model),
+                 ("Fickian, constant salinity", cabbeling, (grid, _) -> fickian_constant_salinity_model(grid)))
+
+        @testset "APE budget [$label]" for (label, thermodynamics, build) in cases
+            model = build(grid, thermodynamics)
+            set_random_state!(model; S = haskey(model.tracers, :S))
             z★ = reference_height(model)
 
             Υ, σ_𝒜, ε_𝒜, R★ = map(computed, (reference_displacement(z★), ape_production(model, z★), ape_dissipation(model, z★),
@@ -16,7 +20,9 @@ function test_ape_budget()
             σ_𝒜_heating, σ_𝒜_nonlin = computed(heating_ape_production(model, z★)), computed(nonlinear_ape_production(model, z★))
 
             @test σ_𝒜 ≈ σ_𝒜_heating .+ σ_𝒜_nonlin
-            label == "linear" && @test all(iszero, σ_𝒜_nonlin)
+            thermodynamics === linear && @test all(iszero, σ_𝒜_nonlin)
+            # A Fickian model has no θ source
+            model.closure isa ScalarDiffusivity && @test all(iszero, σ_𝒜_heating)
 
             # R★ integrates to zero, and summation by parts: Σ V (Υ σ_b - εₐ) = Σ V Υ (σ_b - ∇·j_b)
             @test abs(sum(R★ .* V)) < 1e-13 * sum(abs.(R★) .* V)

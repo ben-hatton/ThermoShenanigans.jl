@@ -51,6 +51,39 @@ function test_diffusivity()
             end
         end
 
+        @testset "Fickian fluxes are the model's own fluxes" begin
+            # At rest and with no forcing, the tendencies are - ∇·j of the closure's fluxes in every cell, wall cells
+            # included, with the default no-flux walls
+            Nz, Δz = size(grid, 3), zspacings(grid, Center())[1]
+            θᵢ(x, y, z) = 283 + 2 * (1 + z / 100) + 1e-2 * rand()
+            Sᵢ(x, y, z) = 0.035 + 1e-4 * rand()
+
+            model = fickian_model(grid, cabbeling)
+            set!(model, θ = θᵢ, S = Sᵢ)
+            G_θ = θ_tendency(model)
+            G_S = Array(interior(model.timestepper.Gⁿ.S))
+            @test G_θ ≈ .- divergence(θ_flux(model), grid) rtol = 1e-12
+            @test G_S ≈ .- divergence(salt_flux(model), grid) rtol = 1e-12
+
+            model = fickian_constant_salinity_model(grid)
+            set!(model, θ = θᵢ)
+            @test θ_tendency(model) ≈ .- divergence(θ_flux(model), grid) rtol = 1e-12
+            @test all(component -> all(iszero, computed(component)), salt_flux(model))
+
+            # A model type of its own, for its ValueBoundaryCondition, which only a Fickian model accepts: the model's
+            # closure carries the wall flux, and the diagnostic θ flux excludes it
+            boundary_conditions = (; θ = FieldBoundaryConditions(top = ValueBoundaryCondition(283.5)))
+            model = fickian_model(grid, cabbeling; boundary_conditions)
+            set!(model, θ = θᵢ, S = Sᵢ)
+            G_θ = θ_tendency(model)
+            ∇_dot_j_θ = divergence(θ_flux(model), grid)
+            wall_flux = z_flux(model, 1)[:, :, end]
+            @test G_θ[:, :, 1:Nz-1] ≈ .- ∇_dot_j_θ[:, :, 1:Nz-1] rtol = 1e-12
+            @test G_θ[:, :, Nz] ≈ .- ∇_dot_j_θ[:, :, Nz] .- wall_flux ./ Δz rtol = 1e-12
+            @test all(iszero, computed(θ_flux(model).z)[:, :, end])
+            @test all(!iszero, wall_flux)
+        end
+
         @testset "Walls and conservation" begin
             model = component_model(grid, cabbeling)
             set!(model, θ = (x, y, z) -> 283 + 2 * (1 + z / 100) + 1e-2 * rand(), S = (x, y, z) -> 0.035 + 1e-4 * rand())

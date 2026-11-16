@@ -7,70 +7,11 @@ function set_smooth_state!(model)
     return nothing
 end
 
-# On the CPU in Float64 these have the types of the other test models, so time stepping compiles only once
-architecture_grid(arch, FT) = RectilinearGrid(arch, FT, size = (4, 4, 4), extent = (1, 1, 1), topology = (Bounded, Bounded, Bounded))
-architecture_thermodynamics(FT) = CabbelingBoussinesqThermodynamics(FT; cabbeling_coefficient = 1e-5, parameters...)
-
 function architecture_model(arch, FT = Float64; step = true)
     model = component_model(architecture_grid(arch, FT), architecture_thermodynamics(FT))
     set_smooth_state!(model)
     step && time_step!(model, 1e-3)
     return model
-end
-
-#####
-##### Every exported diagnostic, for the comparison of architectures
-#####
-
-# Grouped by their arguments: the model, the reference height z★, or both. Face fluxes return their (x, y, z) components.
-const model_diagnostics = (viscous_dissipation, θ_production, buoyancy_production, heating_buoyancy_production,
-                           nonlinear_buoyancy_production, entropy_production, potential_energy_conversion, buoyancy_work,
-                           buoyancy_tendency, advective_buoyancy_tendency, kinetic_energy, ke_advection)
-const model_fluxes = (θ_flux, salt_flux, buoyancy_flux)
-const reference_state_diagnostics = (reference_displacement, reference_potential, reference_buoyancy, reference_work,
-                                     available_potential_energy)
-const reference_diagnostics = (background_potential_energy, background_gravitational_energy, ape_production,
-                               heating_ape_production, nonlinear_ape_production, ape_dissipation, ape_advection,
-                               available_buoyancy_work, spurious_ape_production, reference_tendency_work, bpe_advection,
-                               spurious_bpe_production)
-const reference_fluxes = (ape_flux, ke_flux, bpe_flux)
-
-# The functions named in the docstring of `thermodynamic_operation`, and the internal energy ℐ = h⁰
-const operation_functions = (potential_energy, temperature, exner, chemical_potential_analogue, chemical_potential,
-                             potential_enthalpy)
-
-function_label(f) = string(nameof(f))
-
-# `label => diagnostic` for every exported diagnostic of `model`, with one z★ shared by those of the reference state
-function exported_diagnostics(model)
-    z★ = reference_height(model)
-    diagnostics = Pair{String, Any}["reference_height" => z★]
-
-    for f in operation_functions
-        push!(diagnostics, "thermodynamic_operation($(function_label(f)))" => thermodynamic_operation(model, f))
-    end
-
-    for diagnostic in model_diagnostics
-        push!(diagnostics, function_label(diagnostic) => diagnostic(model))
-    end
-
-    for diagnostic in reference_state_diagnostics
-        push!(diagnostics, function_label(diagnostic) => diagnostic(z★))
-    end
-
-    for diagnostic in reference_diagnostics
-        push!(diagnostics, function_label(diagnostic) => diagnostic(model, z★))
-    end
-
-    for flux in model_fluxes, (component, operation) in pairs(flux(model))
-        push!(diagnostics, "$(function_label(flux)).$component" => operation)
-    end
-
-    for flux in reference_fluxes, (component, operation) in pairs(flux(model, z★))
-        push!(diagnostics, "$(function_label(flux)).$component" => operation)
-    end
-
-    return diagnostics
 end
 
 # The interior values, on the CPU, of a diagnostic: a Field, or an operation computed into one
@@ -98,21 +39,23 @@ function comparison_models(arch, FT; model_kwargs...)
     return device, cpu
 end
 
-# The prognostic fields and every exported diagnostic of `device` against those of `cpu`, one testset per diagnostic
-function test_architectures_match(device, cpu)
+# The prognostic fields and every exported diagnostic of `device` against those of `cpu`, one testset per diagnostic,
+# but those labelled in `refused`
+function test_architectures_match(device, cpu; refused = ())
     device_fields, cpu_fields = merge(device.velocities, device.tracers), merge(cpu.velocities, cpu.tracers)
     @testset "$name" for name in keys(cpu_fields)
         @test Array(interior(device_fields[name])) ≈ interior(cpu_fields[name])
     end
 
-    device_diagnostics, cpu_diagnostics = exported_diagnostics(device), exported_diagnostics(cpu)
+    device_diagnostics, cpu_diagnostics = exported_diagnostics(device; refused), exported_diagnostics(cpu; refused)
     @test first.(device_diagnostics) == first.(cpu_diagnostics)
     cpu_values = Dict(label => diagnostic_values(diagnostic) for (label, diagnostic) in cpu_diagnostics)
 
     # 𝒩_ℬ is a small residual of terms the size of ∇·(u ℬ) ≈ cₚ ∇·(u θ), so that differences of a few ulps in the state
-    # change it by about 10⁻⁷ of itself; its tolerance is set by the round-off of those terms instead
+    # change it by about 10⁻⁷ of itself; its tolerance is set by the round-off of those terms instead. Both are absent
+    # for a Fickian model.
     root_sum_of_squares(values) = sqrt(sum(abs2, values))
-    round_off_scales = Dict("spurious_bpe_production" => root_sum_of_squares(cpu_values["bpe_advection"]))
+    round_off_scales = Dict("spurious_bpe_production" => root_sum_of_squares(get(cpu_values, "bpe_advection", Float64[])))
 
     @testset "$label" for (label, device_diagnostic) in device_diagnostics
         atol = sqrt(eps(Float64)) * get(round_off_scales, label, 0.0)
@@ -134,6 +77,35 @@ function test_architectures()
         compared = (reference_height, thermodynamic_operation, model_diagnostics..., model_fluxes...,
                     reference_state_diagnostics..., reference_diagnostics..., reference_fluxes...)
         @test Set(exported[is_diagnostic]) == Set(nameof.(compared))
+    end
+
+    #=
+    The status of every exported diagnostic for a Fickian (`consistent = false`) model: supported, supported and
+    identically zero, or refused with a `MethodError`. This testset defines the list in the docstring of
+    `thermodynamic_model_components`.
+    =#
+    @testset "Fickian status of every exported diagnostic" begin
+        consistent = architecture_model(CPU())
+        fickian = fickian_model(architecture_grid(CPU(), Float64), architecture_thermodynamics(Float64))
+        set_smooth_state!(fickian)
+        time_step!(fickian, 1e-3)
+
+        # The label of a diagnostic, or of the face flux of which it is a component
+        flux_label(label) = first(split(label, '.'))
+        consistent_labels = first.(exported_diagnostics(consistent))
+        supported = exported_diagnostics(fickian; refused = fickian_refused)
+        @test issubset(fickian_refused, flux_label.(consistent_labels))
+        @test first.(supported) == filter(label -> !(flux_label(label) in fickian_refused), consistent_labels)
+
+        values = Dict(label => diagnostic_values(diagnostic) for (label, diagnostic) in supported)
+        @testset "$label" for (label, _) in supported
+            @test all(isfinite, values[label])
+        end
+
+        zero_labels = filter(label -> all(iszero, values[label]), first.(supported))
+        @test zero_labels == ["θ_production", "heating_buoyancy_production", "heating_ape_production"]
+        @info "Fickian diagnostics: supported $(filter(label -> !(label in zero_labels), first.(supported))); " *
+              "identically zero $zero_labels; refused $(collect(fickian_refused))"
     end
 
     # On GPUs, every exported diagnostic after a time step. On the CPU, the main diagnostics after a time step in Float64, and
@@ -180,6 +152,12 @@ function test_architectures()
     if test_gpu
         @testset "GPU diagnostics match the CPU [Float64]" begin
             test_architectures_match(comparison_models(GPU(), Float64)...)
+        end
+
+        # The Fickian fluxes of Oceananigans' `diffusive_flux_*` through the wall masks, the zero σ_θ, and every
+        # diagnostic that a Fickian model supports
+        @testset "GPU Fickian diagnostics match the CPU [Float64]" begin
+            test_architectures_match(comparison_models(GPU(), Float64; consistent = false)...; refused = fickian_refused)
         end
 
         # The θ forcing as `MultipleForcings` of a user forcing and σ_θ

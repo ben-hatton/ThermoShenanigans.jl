@@ -9,10 +9,10 @@ function test_ke_budget()
         grid = test_grid()
         V = cell_volumes(CenterField(grid))
 
-        @testset "KE budget in every cell" begin
+        @testset "KE budget in every cell [$label]" for (label, build) in (("consistent", component_model), ("Fickian", fickian_model))
             # ℑ(u·(G - ∇p_NHS)) = A_𝒦 - ∇·j_𝒦 + ℑz[w (b̃ - b★)] - ε for a divergence-free velocity and any p_NHS, with the
             # model's tendencies G, which hold - ∇p_HY′ in u and v and neither b̃ nor - ∂z p_HY′ in w
-            model = component_model(grid, cabbeling)
+            model = build(grid, cabbeling)
             set_random_state!(model)
             update_state!(model)
             compute_tendencies!(model, [])

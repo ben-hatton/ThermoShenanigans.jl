@@ -98,8 +98,9 @@ end
 
 #=
 They take the arguments of a discrete-form `Forcing`, with parameters = (; viscous_closure, closure_fields, diffusivity,
-buoyancy) holding the viscous closure and its fields, the `ThermodynamicDiffusivity` and the `ThermodynamicBuoyancy`,
-as returned by `production_parameters`.
+buoyancy) holding the viscous closure and its fields, the diffusivity and the `ThermodynamicBuoyancy`, as returned by
+`production_parameters`. The diffusivity is the `ThermodynamicDiffusivity` of a consistent model, or the Fickian
+`ScalarDiffusivity` of a `consistent = false` model, which is also its viscous closure.
 =#
 
 is_thermodynamic_diffusivity(closure) = closure isa ThermodynamicDiffusivity
@@ -115,6 +116,17 @@ function production_parameters(closure::Tuple, buoyancy_formulation)
     viscous_closure = only(filter(!is_thermodynamic_diffusivity, closure))
     return (; viscous_closure, closure_fields = nothing, diffusivity, buoyancy = buoyancy_formulation)
 end
+
+#=
+The parameters of the production terms of a Fickian (`consistent = false`) model, whose single `ScalarDiffusivity`
+is both the viscous closure and the diffusivity. Only a κ that is a `NamedTuple` of `Number`s, the constant molecular
+coefficients of a DNS, has a method: any other κ (a `Function`, `Field` or discrete κ, or `κ = nothing`) has none, so
+that every flux diagnostic of such a model fails on the host, and the Fickian fluxes can be evaluated without closure
+fields or clock. ε and the kinetic energy flux use this closure's viscous fluxes, which read only ν.
+=#
+production_parameters(closure::ScalarDiffusivity{<:Any, <:Any, <:Any, <:Any, <:NamedTuple{<:Any, <:Tuple{Vararg{Number}}}},
+                      buoyancy_formulation) =
+    (; viscous_closure = closure, closure_fields = nothing, diffusivity = closure, buoyancy = buoyancy_formulation)
 
 @inline dissipationᶜᶜᶜ(i, j, k, grid, clock, fields, parameters) =
     viscous_dissipation_rateᶜᶜᶜ(i, j, k, grid, parameters.viscous_closure, parameters.closure_fields, clock, fields,
@@ -134,11 +146,17 @@ end
 σ_θ = [ε - j_θ·∇π - j_S·∇m] / π, so that π (σ_θ - ∇·j_θ) - m ∇·j_S = ε - ∇·(π j_θ + m j_S):
 the potential energy 𝒫 gains exactly the kinetic energy lost to viscosity, plus a flux divergence (first law).
 Used as the θ forcing (`θ_production_forcing`), alone or with other θ forcings in `MultipleForcings`.
+A Fickian model has no θ source, so that σ_θ is zero for its `ScalarDiffusivity`.
 =#
 @inline θ_productionᶜᶜᶜ(i, j, k, grid, clock, fields, parameters) =
+    θ_productionᶜᶜᶜ(i, j, k, grid, parameters.diffusivity, clock, fields, parameters)
+
+@inline θ_productionᶜᶜᶜ(i, j, k, grid, ::ThermodynamicDiffusivity, clock, fields, parameters) =
     (dissipationᶜᶜᶜ(i, j, k, grid, clock, fields, parameters) -
      potential_energy_conversionᶜᶜᶜ(i, j, k, grid, clock, fields, parameters)) /
     thermodynamic_functionᶜᶜᶜ(i, j, k, grid, exner, parameters.buoyancy, fields)
+
+@inline θ_productionᶜᶜᶜ(i, j, k, grid, ::ScalarDiffusivity, clock, fields, parameters) = zero(grid)
 
 # σ_b_heating = b_θ σ_θ, the buoyancy production by the θ source
 @inline heating_buoyancy_productionᶜᶜᶜ(i, j, k, grid, clock, fields, parameters) =

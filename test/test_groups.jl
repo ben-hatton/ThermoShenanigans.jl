@@ -17,8 +17,9 @@ const source_groups = (
     buoyancy       = (sources = ["thermodynamic_buoyancy.jl", "model_components.jl"],
                       tests   = ["test_buoyancy.jl", "test_energy_conservation.jl"]),
 
+    # The architecture tests hold the GPU comparison of the Fickian fluxes
     diffusivity    = (sources = ["thermodynamic_diffusivity.jl", "model_components.jl"],
-                      tests   = ["test_diffusivity.jl", "test_energy_conservation.jl"]),
+                      tests   = ["test_diffusivity.jl", "test_energy_conservation.jl", "test_architectures.jl"]),
 
     # The architecture tests compare every exported diagnostic between architectures and float types
     production     = (sources = ["production.jl", "diagnostics.jl"],

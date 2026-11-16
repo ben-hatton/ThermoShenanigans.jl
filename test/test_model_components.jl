@@ -70,6 +70,15 @@ function test_model_components()
             components = thermodynamic_model_components(grid, cabbeling; coefficients...)
             @test σ_θ.func === components.forcing.θ.func && σ_θ.parameters === components.forcing.θ.parameters
 
+            # θ_production_forcing has no method for a Fickian closure, which has no θ source
+            @test_throws MethodError θ_production_forcing(ScalarDiffusivity(ν = 1e-3, κ = (θ = 1e-3, S = 1e-4)), buoyancy)
+
+            # Only constant κ has production parameters: a Function κ reads the clock, which the diagnostics do not pass
+            κ_θ(x, y, z, t) = 1e-3
+            for κ in ((θ = κ_θ, S = 1e-4), κ_θ)
+                @test_throws MethodError production_parameters(ScalarDiffusivity(ν = 1e-3; κ), buoyancy)
+            end
+
             # A model type of its own, with σ_θ before the user θ forcing, as in the docstring of θ_production_forcing
             heating = θ_forcing_by_heating(grid, cabbeling)
             by_hand = NonhydrostaticModel(grid; tracers = (:θ, :S), momentum_advection = Centered(), buoyancy, closure,

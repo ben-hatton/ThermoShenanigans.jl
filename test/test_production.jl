@@ -1,5 +1,5 @@
 using Oceananigans.TurbulenceClosures: ∂ⱼ_τ₁ⱼ, ∂ⱼ_τ₂ⱼ, ∂ⱼ_τ₃ⱼ
-using ThermoShenanigans: flux_contractionᶜᶜᶜ, thermodynamic_functionᶜᶜᶜ
+using ThermoShenanigans: flux_contractionᶜᶜᶜ, thermodynamic_functionᶜᶜᶜ, production_parameters
 
 function test_production()
     @testset "Irreversible production" begin
@@ -49,13 +49,16 @@ function test_production()
             @test maximum(abs, computed(entropy_production(model))) < 1e-20
         end
 
-        @testset "σ_b = b_θ σ_θ + σ_b_nonlin [$(summary(thermodynamics))]" for thermodynamics in (linear, cabbeling)
-            model = component_model(grid, thermodynamics)
+        @testset "σ_b = b_θ σ_θ + σ_b_nonlin [$label, $(summary(thermodynamics))]" for (label, build) in
+                (("consistent", component_model), ("Fickian", fickian_model)), thermodynamics in (linear, cabbeling)
+            model = build(grid, thermodynamics)
             set_random_state!(model)
-            C, buoyancy_formulation, closure = merge(model.velocities, model.tracers), model.buoyancy.formulation, model.closure[2]
+            C, buoyancy_formulation = merge(model.velocities, model.tracers), model.buoyancy.formulation
+            closure = production_parameters(model).diffusivity
             σ_b_nonlin = computed(nonlinear_buoyancy_production(model))
 
-            # σ_b_nonlin = j_θ·∇b_θ + j_S·∇b_S = g γ j_θ·∇θ for the cabbeling equation of state
+            # σ_b_nonlin = j_θ·∇b_θ + j_S·∇b_S = g γ j_θ·∇θ for the cabbeling equation of state, which checks the
+            # face fluxes of either closure in flux_contractionᶜᶜᶜ
             θ_itself(θ, S, z, thermodynamics) = θ
             zero_value(θ, S, z, thermodynamics) = zero(θ)
             j_θ_dot_∇θ = KernelFunctionOperation{Center, Center, Center}(flux_contractionᶜᶜᶜ, grid, θ_itself, zero_value, closure, buoyancy_formulation, C)
@@ -63,6 +66,18 @@ function test_production()
 
             b_θ = computed(KernelFunctionOperation{Center, Center, Center}(thermodynamic_functionᶜᶜᶜ, grid, ∂b∂θ, buoyancy_formulation, C))
             @test computed(buoyancy_production(model)) ≈ b_θ .* computed(θ_production(model)) .+ σ_b_nonlin
+            closure isa ScalarDiffusivity && @test computed(buoyancy_production(model)) == σ_b_nonlin
+        end
+
+        @testset "Fickian model: zero θ production, and refusals" begin
+            model = fickian_model(grid, cabbeling)
+            set_random_state!(model)
+            @test all(iszero, computed(θ_production(model)))
+            @test all(iszero, computed(heating_buoyancy_production(model)))
+
+            test_refused(entropy_production, () -> entropy_production(model))
+            test_refused(potential_energy_conversion, () -> potential_energy_conversion(model))
+            test_refused(thermodynamic_operation, () -> thermodynamic_operation(model, potential_energy))
         end
 
         @testset "consistent = false is the standard closure" begin

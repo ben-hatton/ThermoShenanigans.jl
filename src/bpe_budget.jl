@@ -34,9 +34,14 @@ $(TYPEDSIGNATURES)
 
 Return the background potential energy ℬ = 𝒫(θ, S, z★) - 𝒲★ of `model` at (Center, Center, Center), so that
 𝒜 + ℬ = 𝒫. The internal energy ℐ = h⁰, `thermodynamic_operation(model, potential_enthalpy)`,
-lies entirely in ℬ = ℐ + 𝒢★ + g₀ z₀; see [`background_gravitational_energy`](@ref).
+lies entirely in ℬ = ℐ + 𝒢★ + g₀ z₀; see [`background_gravitational_energy`](@ref). It needs a consistent model
+(`consistent = true`), since ℬ depends on h⁰ and z₀: for a Fickian (`consistent = false`) model it throws a
+`MethodError`.
 """
-function background_potential_energy(model, z★::ReferenceHeightField)
+background_potential_energy(model, z★::ReferenceHeightField) =
+    background_potential_energy(production_parameters(model).diffusivity, model, z★)
+
+function background_potential_energy(::ThermodynamicDiffusivity, model, z★)
     state = z★.operand
     return center_operation(background_potential_energyᶜᶜᶜ, model.grid, model.buoyancy.formulation, state.tracers, z★,
                             state.reference_potential, state.parcel_reference_potential)
@@ -52,7 +57,9 @@ end
 $(TYPEDSIGNATURES)
 
 Return the gravitational part 𝒢★ = - b (z★ - z₀) - 𝒲★ of the background potential energy ℬ = ℐ + 𝒢★ + g₀ z₀ of
-`model`, at (Center, Center, Center), with z₀ the `reference_pressure_height` of its thermodynamics. It is computed directly, since the internal energy ℐ = h⁰ is much larger than its changes.
+`model`, at (Center, Center, Center), with z₀ the `reference_pressure_height` of its thermodynamics. It is computed
+directly, since the internal energy ℐ = h⁰ is much larger than its changes. For a Fickian (`consistent = false`) model,
+𝒢★ depends only on b and z★, and z₀ only sets the origin of z: with z₀ = 0, 𝒢★ = - b z★ - 𝒲★.
 """
 function background_gravitational_energy(model, z★::ReferenceHeightField)
     state = z★.operand
@@ -96,11 +103,15 @@ $(TYPEDSIGNATURES)
 
 Return the flux j_ℬ = p★ u + π(θ, z★) j_θ + m(z★) j_S of background potential energy of `model`, a `NamedTuple` of its
 `(x, y, z)` components at faces, zero at walls. Its diffusive part is j_𝒫 - j_𝒜, with j_𝒫 = ℑπ j_θ + ℑm j_S the
-diffusive flux of potential energy and j_𝒜 the [`ape_flux`](@ref).
+diffusive flux of potential energy and j_𝒜 the [`ape_flux`](@ref). It needs a consistent model
+(`consistent = true`), since it is a term of the budget of ℬ: for a Fickian (`consistent = false`) model it throws a
+`MethodError`.
 """
-bpe_flux(model, z★::ReferenceHeightField) =
-    face_operations(bpe_flux_x, bpe_flux_y, bpe_flux_z, model.grid, z★, z★.operand.reference_potential,
-                    production_parameters(model).diffusivity, model.buoyancy.formulation, velocities_and_tracers(model))
+bpe_flux(model, z★::ReferenceHeightField) = bpe_flux(production_parameters(model).diffusivity, model, z★)
+
+bpe_flux(diffusivity::ThermodynamicDiffusivity, model, z★) =
+    face_operations(bpe_flux_x, bpe_flux_y, bpe_flux_z, model.grid, z★, z★.operand.reference_potential, diffusivity,
+                    model.buoyancy.formulation, velocities_and_tracers(model))
 
 # ℬ for the advective operators, as `ape_data_operation` for 𝒜
 function bpe_data_operation(z★)
@@ -113,9 +124,12 @@ end
 $(TYPEDSIGNATURES)
 
 Return the advection - ∇·(u ℬ) of background potential energy by `model`, with its tracer advection scheme, at
-(Center, Center, Center).
+(Center, Center, Center). It needs a consistent model (`consistent = true`), since it is a term of the budget of ℬ:
+for a Fickian (`consistent = false`) model it throws a `MethodError`.
 """
-bpe_advection(model, z★::ReferenceHeightField) =
+bpe_advection(model, z★::ReferenceHeightField) = bpe_advection(production_parameters(model).diffusivity, model, z★)
+
+bpe_advection(::ThermodynamicDiffusivity, model, z★) =
     center_operation(with_reference_state, model.grid, z★, energy_advectionᶜᶜᶜ, model.advection,
                      velocities_and_tracers(model), bpe_data_operation(z★))
 
@@ -158,8 +172,13 @@ cell,
 
 exactly for a divergence-free velocity, when no two cells share a buoyancy, with Υ σ_b the [`ape_production`](@ref),
 εₐ the [`ape_dissipation`](@ref), j_ℬ the [`bpe_flux`](@ref), - ∇·(u ℬ) the [`bpe_advection`](@ref), ε the
-[`viscous_dissipation`](@ref) and R★ the [`reference_tendency_work`](@ref).
+[`viscous_dissipation`](@ref) and R★ the [`reference_tendency_work`](@ref). It needs a consistent model
+(`consistent = true`), since it is a term of the budget of ℬ: for a Fickian (`consistent = false`) model it throws a
+`MethodError`.
 """
 spurious_bpe_production(model, z★::ReferenceHeightField) =
+    spurious_bpe_production(production_parameters(model).diffusivity, model, z★)
+
+spurious_bpe_production(::ThermodynamicDiffusivity, model, z★) =
     center_operation(spurious_bpe_productionᶜᶜᶜ, model.grid, z★, bpe_data_operation(z★), z★.operand.reference_buoyancy,
                      model.advection, model.buoyancy.formulation, velocities_and_tracers(model))

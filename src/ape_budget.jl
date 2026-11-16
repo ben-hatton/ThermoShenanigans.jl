@@ -11,7 +11,9 @@ Following the heuristic split 𝒫 = ℐ + 𝒢 + g₀ z₀ of 𝒫 into interna
 is much larger than its changes.
 
 This file holds the reference state diagnostics and the local APE budget; `ke_budget.jl` and `bpe_budget.jl` hold the
-budgets of 𝒦 and ℬ, which share terms with it.
+budgets of 𝒦 and ℬ, which share terms with it. For a Fickian (`consistent = false`) model, the APE budget is the only
+potential-energy budget: 𝒜 and its sources depend only on b, z★ and the fluxes, while 𝒫 and ℬ depend on h⁰ and z₀,
+which its dynamics never use.
 
 One function per diagnostic, after Oceanostics.jl, so that only the diagnostics asked for are compiled. Those of the
 reference state take the reference height z★ returned by `reference_height(model)`: passing the same z★ to each shares
@@ -113,8 +115,10 @@ energy-consistent b̃, Σ V z ADV_b = Σ V w b̃, so that
 the spurious diapycnal mixing of Ilıcak et al. (2012, Ocean Modell. 45-46): Σ V 𝒩 < 0 when the discrete advection
 mixes, and Σ V 𝒩 > 0 when the dispersive errors of centred advection unmix.
 
-The budget is ∂𝒜/∂t = Υ σ_b - εₐ - ∇·j_𝒜 - ∇·(u 𝒜) - ℑz[w (b̃ - b★)] + 𝒩 + R★. Boundary fluxes of θ and S, and
-background fields, are not included.
+The budget is ∂𝒜/∂t = Υ σ_b - εₐ - ∇·j_𝒜 - ∇·(u 𝒜) - ℑz[w (b̃ - b★)] + 𝒩 + R★, for both closures. No budget includes
+boundary fluxes, for either closure: the face fluxes are zero at walls, and boundary fluxes of θ and S, and background
+fields, are not included. For a Fickian model, this also excludes the wall fluxes of Value and Gradient boundary
+conditions, which its closure carries.
 =#
 
 # b_S ∇·(u S), zero for constant salinity
@@ -149,7 +153,8 @@ for (dir, face_area) in ((:x, Axᶠᶜᶜ), (:y, Ayᶜᶠᶜ), (:z, Azᶜᶜᶠ)
         $face_area(i, j, k, grid) * $buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields)
 end
 
-# Ḃ = σ_b - ∇·j_b, the non-advective buoyancy tendency
+# Ḃ = σ_b - ∇·j_b, the non-advective buoyancy tendency, formed here for both closures from the masked face fluxes of
+# their diffusivity, with σ_b = σ_b_nonlin for a Fickian model, whose σ_θ is zero
 @inline function buoyancy_tendencyᶜᶜᶜ(i, j, k, grid, clock, fields, parameters)
     closure, buoyancy_formulation = parameters.diffusivity, parameters.buoyancy
     ∇_dot_j_b = (δxᶜᵃᵃ(i, j, k, grid, area_buoyancy_flux_x, closure, buoyancy_formulation, fields) +
@@ -191,7 +196,7 @@ ape_production(model, z★::ReferenceHeightField) = ape_production_operation(buo
 $(TYPEDSIGNATURES)
 
 Return the production Υ σ_b_heating of available potential energy of `model` by the θ source, at
-(Center, Center, Center).
+(Center, Center, Center). It is zero for a Fickian (`consistent = false`) model, which has no θ source.
 """
 heating_ape_production(model, z★::ReferenceHeightField) =
     ape_production_operation(heating_buoyancy_productionᶜᶜᶜ, model, z★)
