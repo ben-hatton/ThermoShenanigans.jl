@@ -33,9 +33,9 @@ using KernelAbstractions: @index, @kernel
 using Oceananigans: Oceananigans
 using Oceananigans.Advection: div_Uc, div_𝐯u, div_𝐯v, div_𝐯w, half_ϕ²
 using Oceananigans.Architectures: CPU, architecture, on_architecture
-using Oceananigans.BoundaryConditions: fill_halo_regions!
+using Oceananigans.BoundaryConditions: BoundaryCondition, Bottom, Flux, Top, explicit_flux, fill_halo_regions!, getbc
 using Oceananigans.Fields: Field, FieldStatus, compute_at!, interior, set_status!
-using Oceananigans.Grids: Center, Face, NegativeZDirection, XYZRegularRG, znode
+using Oceananigans.Grids: Center, Face, NegativeZDirection, XYZRegularRG, inactive_cell, znode
 using Oceananigans.Operators: ∂xᶠᶜᶜ, ∂yᶜᶠᶜ, ∂zᶜᶜᶠ, ℑxᶠᵃᵃ, ℑyᵃᶠᵃ, ℑzᵃᵃᶠ, ℑxᶜᵃᵃ, ℑyᵃᶜᵃ, ℑzᵃᵃᶜ,
                               ℑxyᶜᶜᵃ, ℑxzᶜᵃᶜ, ℑyzᵃᶜᶜ, δxᶜᵃᵃ, δxᶠᵃᵃ, δyᵃᶜᵃ, δyᵃᶠᵃ, δzᵃᵃᶜ, δzᵃᵃᶠ,
                               Axᶜᶜᶜ, Axᶠᶜᶜ, Axᶠᶠᶜ, Axᶠᶜᶠ, Ayᶜᶜᶜ, Ayᶜᶠᶜ, Ayᶠᶠᶜ, Ayᶜᶠᶠ, Azᶜᶜᶜ, Azᶜᶜᶠ, Azᶠᶜᶠ, Azᶜᶠᶠ,
@@ -48,7 +48,8 @@ using Oceananigans.BuoyancyFormulations: BuoyancyForce, θ_and_sᴬ
 using Oceananigans.TurbulenceClosures: AbstractTurbulenceClosure, ScalarDiffusivity, biharmonic_mask_x, biharmonic_mask_y, biharmonic_mask_z,
                                        viscous_flux_ux, viscous_flux_uy, viscous_flux_uz, viscous_flux_vx, viscous_flux_vy,
                                        viscous_flux_vz, viscous_flux_wx, viscous_flux_wy, viscous_flux_wz,
-                                       min_Δxyz, ThreeDimensionalFormulation
+                                       min_Δxyz, ThreeDimensionalFormulation, x_peripheral_node, y_peripheral_node,
+                                       z_peripheral_node
 
 import Oceananigans.Fields: compute!
 import Oceananigans.Utils: with_tracers

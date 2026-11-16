@@ -17,6 +17,25 @@ field_data(fields) = map(field -> field.data, fields)
 # The data of the model fields read by the diagnostics
 velocities_and_tracers(model) = field_data(merge(model.velocities, model.tracers))
 
+#=
+The arguments from which the diagnostics evaluate the wall fluxes of θ and S as `compute_flux_bc_tendencies!` does
+(Oceananigans 0.116.1, `src/Models/NonhydrostaticModels/compute_nonhydrostatic_tendencies.jl:177-195`): the boundary
+conditions of θ and S on the sides of the domain, as the model has regularised them, and the model's clock and the data
+of `fields(model)`. Field-dependent boundary functions index the model fields by position
+(`field_dependencies_indices`, `src/BoundaryConditions/continuous_boundary_function.jl:44`), so that these are all of
+`fields(model)`, auxiliary fields included, in its order. The sides are held in a `NamedTuple`, which a kernel reads by
+name: a `FieldBoundaryConditions` adapts to the GPU as a tuple of its ordered conditions. The constant-salinity model
+has no S.
+=#
+wall_conditions(model) = (θ = side_boundary_conditions(model.tracers.θ), S = side_boundary_conditions(get(model.tracers, :S, nothing)),
+                          clock = model.clock, fields = field_data(Oceananigans.fields(model)))
+
+function side_boundary_conditions(field)
+    bcs = field.boundary_conditions
+    return (; bcs.west, bcs.east, bcs.south, bcs.north, bcs.bottom, bcs.top)
+end
+side_boundary_conditions(::Nothing) = nothing
+
 # The parameters of the production terms in `production.jl` for the closure and buoyancy of a model, built as for its
 # θ forcing σ_θ
 production_parameters(model) = production_parameters(model.closure, model.buoyancy.formulation)
@@ -143,31 +162,37 @@ potential_energy_conversion(model) = potential_energy_conversion(production_para
 
 potential_energy_conversion(::ThermodynamicDiffusivity, model) = production_operation(potential_energy_conversionᶜᶜᶜ, model)
 
-# x, y and z components of a diffusive flux of the diffusivity of a model: its `ThermodynamicDiffusivity`, or its
-# Fickian `ScalarDiffusivity`
+# x, y and z components of a diffusive flux of the diffusivity of a model, its `ThermodynamicDiffusivity` or its
+# Fickian `ScalarDiffusivity`, with the wall fluxes of the model
 diffusive_flux_operations(f_x, f_y, f_z, model) =
     face_operations(f_x, f_y, f_z, model.grid, production_parameters(model).diffusivity, model.buoyancy.formulation,
-                    field_data(model.tracers))
+                    field_data(model.tracers), wall_conditions(model))
 
 """
 $(TYPEDSIGNATURES)
 
-Return the diffusive θ flux j_θ of `model`, a `NamedTuple` of its `(x, y, z)` components at faces, zero at walls.
+Return the diffusive θ flux j_θ of `model`, a `NamedTuple` of its `(x, y, z)` components at faces. At a wall it is the
+θ flux that the model applies there: the flux of a `FluxBoundaryCondition` (zero by default), plus, for a Fickian
+(`consistent = false`) model, the wall flux of its closure, that of a `ValueBoundaryCondition` or
+`GradientBoundaryCondition`. With the tendency G_θ of `compute_tendencies!` and `compute_flux_bc_tendencies!`,
+G_θ - σ_θ = - ∇·j_θ in every cell when u = 0. Only the explicit part of an implicit-explicit flux condition is included.
 """
-θ_flux(model) = diffusive_flux_operations(masked_θ_flux_x, masked_θ_flux_y, masked_θ_flux_z, model)
+θ_flux(model) = diffusive_flux_operations(total_θ_flux_x, total_θ_flux_y, total_θ_flux_z, model)
 
 """
 $(TYPEDSIGNATURES)
 
-Return the diffusive salt flux j_S of `model`, a `NamedTuple` of its `(x, y, z)` components at faces, zero at walls.
+Return the diffusive salt flux j_S of `model`, a `NamedTuple` of its `(x, y, z)` components at faces, with the wall
+fluxes that the model applies, as for [`θ_flux`](@ref).
 """
-salt_flux(model) = diffusive_flux_operations(masked_salt_flux_x, masked_salt_flux_y, masked_salt_flux_z, model)
+salt_flux(model) = diffusive_flux_operations(total_salt_flux_x, total_salt_flux_y, total_salt_flux_z, model)
 
 """
 $(TYPEDSIGNATURES)
 
 Return the diffusive buoyancy flux j_b = b_θ j_θ + b_S j_S of `model`, a `NamedTuple` of its `(x, y, z)` components
-at faces, zero at walls.
+at faces. At a wall it is b_θ₁ Q_θ + b_S₁ Q_S, with the coefficients of the boundary cell, to whose tendency the model
+applies the wall fluxes Q_θ and Q_S of [`θ_flux`](@ref) and [`salt_flux`](@ref).
 """
 buoyancy_flux(model) = diffusive_flux_operations(buoyancy_flux_x, buoyancy_flux_y, buoyancy_flux_z, model)
 

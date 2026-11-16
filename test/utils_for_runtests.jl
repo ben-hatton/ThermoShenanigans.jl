@@ -16,7 +16,7 @@ using Oceananigans.AbstractOperations: KernelFunctionOperation
 using Oceananigans.Fields: location
 using Oceananigans.Grids: znode
 using Oceananigans.Operators: volume
-using Oceananigans.TimeSteppers: update_state!, compute_tendencies!
+using Oceananigans.TimeSteppers: update_state!, compute_tendencies!, compute_flux_bc_tendencies!
 using Oceananigans.TurbulenceClosures: ∇_dot_qᶜ, diffusive_flux_x, diffusive_flux_y, diffusive_flux_z
 using ThermoShenanigans: barodiffusion_coefficient, θ_flux_prefactor, thermodynamic_functionᶜᶜᶜ
 
@@ -161,13 +161,62 @@ function test_refused(f, build)
     @test exception isa MethodError && exception.f === f && exception.args[1] isa ScalarDiffusivity
 end
 
-# Prescribed fluxes of θ and S at the top and bottom (positive upwards), and a passive tracer c
-const flux_bc_values = (θ = (top = 1e-4, bottom = -2e-4), S = (top = -3e-6, bottom = 1e-6))
+# Prescribed fluxes of θ and S at the x walls and at the top and bottom (positive in +x and +z), and a passive tracer c
+const flux_bc_values = (θ = (west = 2e-4, east = -1e-4, top = 1e-4, bottom = -2e-4),
+                        S = (west = -2e-6, east = 1e-6, top = -3e-6, bottom = 1e-6))
 
-flux_bc_model(grid) =
-    component_model(grid, cabbeling; tracers = (:θ, :S, :c),
-                    boundary_conditions = map(Q -> FieldBoundaryConditions(top = FluxBoundaryCondition(Q.top),
-                                                                           bottom = FluxBoundaryCondition(Q.bottom)), flux_bc_values))
+# The flux values are converted to the float type of the grid, for the Float32 models of the type-stability tests
+flux_bc_model(grid, thermodynamics = cabbeling) =
+    component_model(grid, thermodynamics; tracers = (:θ, :S, :c),
+                    boundary_conditions = map(Q -> FieldBoundaryConditions(; map(value -> FluxBoundaryCondition(convert(eltype(grid), value)), Q)...),
+                                              flux_bc_values))
+
+#=
+Σ_walls A (c₁ Q_θ + d₁ Q_S) over the x walls and the bottom and top of `grid`, with inward normals: the input through
+the walls by the fluxes Q of `flux_bc_values` (positive in +x and +z), with the values of the interior arrays c and d
+in the boundary cells
+=#
+function wall_input(c, d, grid; Q = flux_bc_values)
+    Ax = yspacings(grid, Center())[1] * zspacings(grid, Center())[1]
+    Az = xspacings(grid, Center())[1] * yspacings(grid, Center())[1]
+    side_input(dims, index, Q_θ, Q_S) = sum(selectdim(c, dims, index) .* Q_θ .+ selectdim(d, dims, index) .* Q_S)
+    return Ax * (side_input(1, 1, Q.θ.west, Q.S.west) - side_input(1, size(c, 1), Q.θ.east, Q.S.east)) +
+           Az * (side_input(3, 1, Q.θ.bottom, Q.S.bottom) - side_input(3, size(c, 3), Q.θ.top, Q.S.top))
+end
+
+#=
+A θ flux Q_θ = Q_H f(t) / (ρ₀ π(θ₁, S₁, z₁)) at the bottom (k₁ = 1) or top (k₁ = Nz), which carries the heat flux
+Q_H f(t), positive upwards, with π of the boundary cell and f(t) = 1 + t: a discrete-form flux condition that reads the
+model's fields and clock. With the same Q_H at the bottom and top, the energy input Σ_walls A π₁ Q_θ is zero.
+=#
+@inline function equal_heat_θ_flux(i, j, grid, clock, fields, parameters)
+    π₁ = thermodynamic_functionᶜᶜᶜ(i, j, parameters.k, grid, exner, parameters.buoyancy_formulation, fields)
+    return parameters.heat_flux * (1 + clock.time) / (parameters.reference_density * π₁)
+end
+
+# A model type of its own, for its field- and time-dependent discrete-form flux conditions of θ
+function equal_heat_flux_model(grid; heat_flux = 400, reference_density = 1000)
+    buoyancy_formulation = ThermodynamicBuoyancy(grid, cabbeling)
+    θ_flux_condition(k) = FluxBoundaryCondition(equal_heat_θ_flux; discrete_form = true,
+                                                parameters = (; heat_flux, reference_density, buoyancy_formulation, k))
+    boundary_conditions = (; θ = FieldBoundaryConditions(bottom = θ_flux_condition(1), top = θ_flux_condition(size(grid, 3))))
+    return component_model(grid, cabbeling; boundary_conditions)
+end
+
+#=
+A Fickian model with the Flux conditions of `flux_bc_values` on the x walls, a ValueBoundaryCondition on the top of θ
+and a GradientBoundaryCondition on the bottom of S: a model type of its own, since only a Fickian model accepts Value
+and Gradient conditions. Its closure carries the wall fluxes of the Value and Gradient conditions, and the model adds
+those of the Flux conditions separately.
+=#
+fickian_wall_model(grid, thermodynamics = cabbeling) =
+    fickian_model(grid, thermodynamics;
+                  boundary_conditions = (θ = FieldBoundaryConditions(west = FluxBoundaryCondition(flux_bc_values.θ.west),
+                                                                     east = FluxBoundaryCondition(flux_bc_values.θ.east),
+                                                                     top = ValueBoundaryCondition(283.5)),
+                                         S = FieldBoundaryConditions(west = FluxBoundaryCondition(flux_bc_values.S.west),
+                                                                     east = FluxBoundaryCondition(flux_bc_values.S.east),
+                                                                     bottom = GradientBoundaryCondition(-1e-3))))
 
 function set_random_state!(model; S = true)
     U(x, y, z) = 1e-2 * randn()
@@ -243,11 +292,13 @@ fluxes(m, id) = (computed(KernelFunctionOperation{Face, Center, Center}(diffusiv
                  computed(KernelFunctionOperation{Center, Face, Center}(diffusive_flux_y, m.grid, closure_args(m, id)...)),
                  z_flux(m, id))
 
-# dE/dt = ∫ uᵢ Gᵢ dV + ∫ (π G_θ + m G_S) dV from the model's own tendencies, with two scales:
-# the round-off scale ∫ |π G_θ| + |m G_S| dV (π ≈ cₚ makes this the largest term), and the size of the conversions ∫ |w b̃| + ε dV
+# dE/dt = ∫ uᵢ Gᵢ dV + ∫ (π G_θ + m G_S) dV from the model's own tendencies, including those of its
+# FluxBoundaryConditions, with two scales: the round-off scale ∫ |π G_θ| + |m G_S| dV (π ≈ cₚ makes this the largest
+# term), and the size of the conversions ∫ |w b̃| + ε dV
 function energy_tendency(model)
     update_state!(model)
     compute_tendencies!(model, [])
+    compute_flux_bc_tendencies!(model)
     G = model.timestepper.Gⁿ
     u, v, w = model.velocities
     π, m = field(thermodynamic_operation(model, exner)), field(thermodynamic_operation(model, chemical_potential_analogue))

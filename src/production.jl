@@ -36,36 +36,55 @@ native location of the viscous flux Fᵢⱼ, so that Σ ε V is exactly the disc
     isothermal_∂μ∂S(θ, S, z, thermodynamics) / temperature(θ, S, z, thermodynamics)
 
 # Generated for each direction, with `dir` and the operators of that direction:
-#   face_contraction_{x,y,z}, buoyancy_flux_{x,y,z}, salt_entropy_production_{x,y,z},
-#   unmasked_entropy_production_{x,y,z}, face_entropy_production_{x,y,z}
-for (dir, difference_to_face, derivative_to_face, average_to_face, face_area, face_volume, wall_mask) in
-        ((:x, δxᶠᵃᵃ, ∂xᶠᶜᶜ, ℑxᶠᵃᵃ, Axᶠᶜᶜ, Vᶠᶜᶜ, wall_mask_x),
-         (:y, δyᵃᶠᵃ, ∂yᶜᶠᶜ, ℑyᵃᶠᵃ, Ayᶜᶠᶜ, Vᶜᶠᶜ, wall_mask_y),
-         (:z, δzᵃᵃᶠ, ∂zᶜᶜᶠ, ℑzᵃᵃᶠ, Azᶜᶜᶠ, Vᶜᶜᶠ, wall_mask_z))
+#   face_contraction_{x,y,z}, closure_buoyancy_flux_{x,y,z}, wall_buoyancy_flux_{x,y,z}, buoyancy_flux_{x,y,z},
+#   salt_entropy_production_{x,y,z}, unmasked_entropy_production_{x,y,z}, face_entropy_production_{x,y,z}
+for (dir, difference_to_face, derivative_to_face, average_to_face, boundary_cell_value, face_area, face_volume, wall_mask) in
+        ((:x, δxᶠᵃᵃ, ∂xᶠᶜᶜ, ℑxᶠᵃᵃ, boundary_cell_value_x, Axᶠᶜᶜ, Vᶠᶜᶜ, wall_mask_x),
+         (:y, δyᵃᶠᵃ, ∂yᶜᶠᶜ, ℑyᵃᶠᵃ, boundary_cell_value_y, Ayᶜᶠᶜ, Vᶜᶠᶜ, wall_mask_y),
+         (:z, δzᵃᵃᶠ, ∂zᶜᶜᶠ, ℑzᵃᵃᶠ, boundary_cell_value_z, Azᶜᶜᶠ, Vᶜᶜᶠ, wall_mask_z))
 
     masked_θ_flux_xyz               = Symbol(:masked_θ_flux_, dir)
     masked_salt_flux_xyz            = Symbol(:masked_salt_flux_, dir)
+    wall_θ_flux_xyz                 = Symbol(:wall_θ_flux_, dir)
+    wall_salt_flux_xyz              = Symbol(:wall_salt_flux_, dir)
     salt_gradient_xyz               = Symbol(:salt_gradient_, dir)
     face_contraction_xyz            = Symbol(:face_contraction_, dir)
+    closure_buoyancy_flux_xyz       = Symbol(:closure_buoyancy_flux_, dir)
+    wall_buoyancy_flux_xyz          = Symbol(:wall_buoyancy_flux_, dir)
     buoyancy_flux_xyz               = Symbol(:buoyancy_flux_, dir)
     face_entropy_production_xyz     = Symbol(:face_entropy_production_, dir)
     unmasked_entropy_production_xyz = Symbol(:unmasked_entropy_production_, dir)
     salt_entropy_production_xyz     = Symbol(:salt_entropy_production_, dir)
 
     @eval begin
-        # A (j_θ δf_θ + j_S δf_S)
+        #=
+        A (j_θ δf_θ + j_S δf_S), with the closure fluxes, which are zero at walls: a wall flux enters the boundary cell,
+        whose coefficients it takes, and so has no part in a contraction with a difference across the wall
+        =#
         @inline $face_contraction_xyz(i, j, k, grid, f_θ, f_S, closure, buoyancy_formulation, fields) =
             $face_area(i, j, k, grid) * ($masked_θ_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) *
                                          $difference_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, f_θ, buoyancy_formulation, fields) +
                                          $masked_salt_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) *
                                          $difference_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, f_S, buoyancy_formulation, fields))
 
-        # j_b = ℑ(b_θ) j_θ + ℑ(b_S) j_S
-        @inline $buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) =
+        # ℑ(b_θ) j_θ + ℑ(b_S) j_S with the closure fluxes, zero at walls
+        @inline $closure_buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) =
             $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, ∂b∂θ, buoyancy_formulation, fields) *
             $masked_θ_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) +
             $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, ∂b∂S, buoyancy_formulation, fields) *
             $masked_salt_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields)
+
+        # b_θ₁ Q_θ + b_S₁ Q_S, with the coefficients of the boundary cell and the wall fluxes; zero away from walls
+        @inline $wall_buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls) =
+            $boundary_cell_value(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, ∂b∂θ, buoyancy_formulation, fields) *
+            $wall_θ_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls) +
+            $boundary_cell_value(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, ∂b∂S, buoyancy_formulation, fields) *
+            $wall_salt_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls)
+
+        # j_b = ℑ(b_θ) j_θ + ℑ(b_S) j_S at interior faces, and b_θ₁ Q_θ + b_S₁ Q_S at walls
+        @inline $buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls) =
+            $closure_buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) +
+            $wall_buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls)
 
         # κ_S ℑ((∂μ/∂S)_T / T) (∂S + Γ_S)², zero for constant salinity
         @inline $salt_entropy_production_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) =
@@ -81,6 +100,8 @@ for (dir, difference_to_face, derivative_to_face, average_to_face, face_area, fa
                                            $derivative_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, temperature, buoyancy_formulation, fields)^2 +
                                            $salt_entropy_production_xyz(i, j, k, grid, closure, buoyancy_formulation, fields))
 
+        # Zero at walls, as the face contractions: the wall fluxes enter the boundary cell, and their entropy
+        # production is not included
         @inline $face_entropy_production_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) =
             $wall_mask(i, j, k, grid, $unmasked_entropy_production_xyz, closure, buoyancy_formulation, fields)
     end

@@ -32,11 +32,11 @@ uniform level has z★ = z and 𝒜 = 0.
 At the model's w-faces, the reference buoyancy is b★ᶜᶜᶠ = δz p★ᶜᶜᶜ / Δz, the discrete gradient of p★ᶜᶜᶜ.
 With discrete continuity this makes ∇·(p★ u) = ℑz(w b★ᶜᶜᶠ) hold exactly in every cell.
 
-The tendency of the reference state follows from the buoyancy tendencies Ḃ of the cells, gathered through the
-permutation of the reference state into Ḃ★, in the order of b★. Since P★[n] is h times the sum of the n - 1 lowest
-buoyancies, its tendency is h Ċ[n - 1], with Ċ[n] = Σ_{m≤n} Ḃ★[m]. Ċ at the ends of a band of tied slots does not
-depend on the order of the tied cells, and within a band Ṗ★ is interpolated linearly between its ends, which averages
-over the tied cells. Then
+The tendency of the reference state follows from the buoyancy tendencies Ḃ of the cells, wall fluxes of θ and S
+included, gathered through the permutation of the reference state into Ḃ★, in the order of b★. Since P★[n] is h times
+the sum of the n - 1 lowest buoyancies, its tendency is h Ċ[n - 1], with Ċ[n] = Σ_{m≤n} Ḃ★[m]. Ċ at the ends of a band
+of tied slots does not depend on the order of the tied cells, and within a band Ṗ★ is interpolated linearly between
+its ends, which averages over the tied cells. Then
 
     Ṗ★(z★) = h (Ċ[n₁ - 1] + Ċ[n₂]) / 2,
 

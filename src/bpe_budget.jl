@@ -18,8 +18,9 @@ is the production of ℬ by the error of the discrete advection of θ and S, as 
 advection and the energy-consistent b̃, Σ V (π ADV_θ + m ADV_S) = - Σ V w b̃, so that Σ V 𝒩_ℬ = - Σ V 𝒩: the
 spurious mixing by the advection converts ℬ into 𝒜 (or back) with no net change of 𝒫.
 
-The budget shares the terms Υ σ_b, εₐ and R★ with the APE budget. Boundary fluxes of θ and S, and background fields,
-are not included.
+The budget shares the terms Υ σ_b, εₐ and R★ with the APE budget. At a wall, p★ u = 0 and, with the wall values of
+`ape_budget.jl`, j_ℬ·n = (π₁ - Υ₁ b_θ₁) Q_θ + (m₁ - Υ₁ b_S₁) Q_S = π(θ₁, S₁, z★₁) Q_θ + m(θ₁, S₁, z★₁) Q_S, so that the
+budget holds in the boundary cells as well. Background fields are not included.
 =#
 
 # ℬ = 𝒫(θ, S, z★) - 𝒲★
@@ -68,33 +69,40 @@ function background_gravitational_energy(model, z★::ReferenceHeightField)
                             state.parcel_reference_potential)
 end
 
-# Generated: potential_energy_flux_{x,y,z}, j_𝒫 = ℑπ j_θ + ℑm j_S, the diffusive flux of 𝒫;
-# unmasked_bpe_flux_{x,y,z} and bpe_flux_{x,y,z}, the components of j_ℬ = p★ u + j_𝒫 - j_𝒜 at faces
-for (dir, average_to_face, velocity_component, wall_mask) in ((:x, ℑxᶠᵃᵃ, :u, wall_mask_x),
-                                                              (:y, ℑyᵃᶠᵃ, :v, wall_mask_y),
-                                                              (:z, ℑzᵃᵃᶠ, :w, wall_mask_z))
-    masked_θ_flux_xyz      = Symbol(:masked_θ_flux_, dir)
-    masked_salt_flux_xyz   = Symbol(:masked_salt_flux_, dir)
+# Generated: potential_energy_flux_{x,y,z}, j_𝒫 = ℑπ j_θ + ℑm j_S at interior faces and π₁ Q_θ + m₁ Q_S at walls,
+# the diffusive flux of 𝒫; bpe_flux_{x,y,z}, the components of j_ℬ = p★ u + j_𝒫 - j_𝒜 at faces
+for (dir, average_to_face, boundary_cell_value, velocity_component) in ((:x, ℑxᶠᵃᵃ, boundary_cell_value_x, :u),
+                                                                        (:y, ℑyᵃᶠᵃ, boundary_cell_value_y, :v),
+                                                                        (:z, ℑzᵃᵃᶠ, boundary_cell_value_z, :w))
+    masked_θ_flux_xyz         = Symbol(:masked_θ_flux_, dir)
+    masked_salt_flux_xyz      = Symbol(:masked_salt_flux_, dir)
+    wall_θ_flux_xyz           = Symbol(:wall_θ_flux_, dir)
+    wall_salt_flux_xyz        = Symbol(:wall_salt_flux_, dir)
     potential_energy_flux_xyz = Symbol(:potential_energy_flux_, dir)
-    ape_flux_xyz           = Symbol(:ape_flux_, dir)
-    unmasked_bpe_flux_xyz  = Symbol(:unmasked_bpe_flux_, dir)
-    bpe_flux_xyz           = Symbol(:bpe_flux_, dir)
+    ape_flux_xyz              = Symbol(:ape_flux_, dir)
+    bpe_flux_xyz              = Symbol(:bpe_flux_, dir)
 
     @eval begin
-        @inline $potential_energy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) =
+        @inline $potential_energy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls) =
             $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, exner, buoyancy_formulation, fields) *
             $masked_θ_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) +
             $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, chemical_potential_analogue, buoyancy_formulation, fields) *
-            $masked_salt_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields)
+            $masked_salt_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) +
+            $boundary_cell_value(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, exner, buoyancy_formulation, fields) *
+            $wall_θ_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls) +
+            $boundary_cell_value(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, chemical_potential_analogue, buoyancy_formulation, fields) *
+            $wall_salt_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls)
 
-        @inline $unmasked_bpe_flux_xyz(i, j, k, grid, z★, reference_potential, closure, buoyancy_formulation, fields) =
+        #=
+        At a wall, p★ u = 0 since u·n = 0, and j_𝒫 - j_𝒜 = (π₁ - Υ₁ b_θ₁) Q_θ + (m₁ - Υ₁ b_S₁) Q_S. Since b does not
+        depend on z, π(θ, S, z) - Υ b_θ = π(θ, S, z★) and m(θ, S, z) - Υ b_S = m(θ, S, z★), so that this is
+        π(θ₁, S₁, z★₁) Q_θ + m(θ₁, S₁, z★₁) Q_S; the general form is kept for thermodynamics in which b depends on z.
+        =#
+        @inline $bpe_flux_xyz(i, j, k, grid, z★, reference_potential, closure, buoyancy_formulation, fields, walls) =
             @inbounds fields.$velocity_component[i, j, k] *
                       $average_to_face(i, j, k, grid, reference_potentialᶜᶜᶜ, reference_potential) +
-                      $potential_energy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) -
-                      $ape_flux_xyz(i, j, k, grid, z★, closure, buoyancy_formulation, fields)
-
-        @inline $bpe_flux_xyz(i, j, k, grid, z★, reference_potential, closure, buoyancy_formulation, fields) =
-            $wall_mask(i, j, k, grid, $unmasked_bpe_flux_xyz, z★, reference_potential, closure, buoyancy_formulation, fields)
+                      $potential_energy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls) -
+                      $ape_flux_xyz(i, j, k, grid, z★, closure, buoyancy_formulation, fields, walls)
     end
 end
 
@@ -102,8 +110,10 @@ end
 $(TYPEDSIGNATURES)
 
 Return the flux j_ℬ = p★ u + π(θ, z★) j_θ + m(z★) j_S of background potential energy of `model`, a `NamedTuple` of its
-`(x, y, z)` components at faces, zero at walls. Its diffusive part is j_𝒫 - j_𝒜, with j_𝒫 = ℑπ j_θ + ℑm j_S the
-diffusive flux of potential energy and j_𝒜 the [`ape_flux`](@ref). It needs a consistent model
+`(x, y, z)` components at faces. Its diffusive part is j_𝒫 - j_𝒜, with j_𝒫 = ℑπ j_θ + ℑm j_S the diffusive flux of
+potential energy and j_𝒜 the [`ape_flux`](@ref). At a wall, where p★ u = 0, it is (π₁ - Υ₁ b_θ₁) Q_θ +
+(m₁ - Υ₁ b_S₁) Q_S = π(θ₁, S₁, z★₁) Q_θ + m(θ₁, S₁, z★₁) Q_S, with the coefficients of the boundary cell and the wall
+fluxes Q_θ and Q_S of the [`θ_flux`](@ref) and [`salt_flux`](@ref). It needs a consistent model
 (`consistent = true`), since it is a term of the budget of ℬ: for a Fickian (`consistent = false`) model it throws a
 `MethodError`.
 """
@@ -111,7 +121,7 @@ bpe_flux(model, z★::ReferenceHeightField) = bpe_flux(production_parameters(mod
 
 bpe_flux(diffusivity::ThermodynamicDiffusivity, model, z★) =
     face_operations(bpe_flux_x, bpe_flux_y, bpe_flux_z, model.grid, z★, z★.operand.reference_potential, diffusivity,
-                    model.buoyancy.formulation, velocities_and_tracers(model))
+                    model.buoyancy.formulation, velocities_and_tracers(model), wall_conditions(model))
 
 # ℬ for the advective operators, as `ape_data_operation` for 𝒜
 function bpe_data_operation(z★)

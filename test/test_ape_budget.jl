@@ -47,11 +47,42 @@ function test_ape_budget()
             @test sum(𝒩 .* V) ≈ sum(z★_values .* ADV_b .* V) rtol = 1e-8
         end
 
+        #=
+        The wall values of `buoyancy_flux_*` (b_θ₁ Q_θ + b_S₁ Q_S) and `ape_flux_*` (Υ₁ j_b·n), the face contractions of
+        εₐ with no wall term (`face_ape_dissipation_*`), and Ḃ of `buoyancy_tendencyᶜᶜᶜ` and of R★ with the wall fluxes,
+        for Flux conditions and, for the Fickian model, the closure's wall flux of its Value and Gradient conditions
+        =#
+        @testset "APE budget with boundary fluxes [$label]" for (label, build) in (("Flux conditions", flux_bc_model),
+                                                                                  ("Fickian, wall conditions", fickian_wall_model))
+            model = build(grid)
+            set_random_state!(model)
+            z★ = reference_height(model)
+
+            Υ, σ_𝒜, ε_𝒜, R★ = map(computed, (reference_displacement(z★), ape_production(model, z★), ape_dissipation(model, z★),
+                                              reference_tendency_work(model, z★)))
+            σ_b, Ḃ = computed(buoyancy_production(model)), computed(buoyancy_tendency(model))
+            ∇_dot_j_𝒜 = divergence(ape_flux(model, z★), grid)
+
+            # R★ integrates to zero; locally, - Υ ∇·j_b = - ∇·j_𝒜 - εₐ, boundary cells included; and Σ V ∇·j_𝒜, the APE
+            # input by the wall fluxes, closes Σ V (Υ σ_b - εₐ - ∇·j_𝒜) = Σ V Υ Ḃ
+            @test abs(sum(R★ .* V)) < 1e-13 * sum(abs.(R★) .* V)
+            @test .- Υ .* (σ_b .- Ḃ) ≈ .- ∇_dot_j_𝒜 .- ε_𝒜 rtol = 1e-8
+            @test sum((σ_𝒜 .- ε_𝒜 .- ∇_dot_j_𝒜) .* V) ≈ sum(Υ .* Ḃ .* V) rtol = 1e-10
+        end
+
         @testset "APE budget of a stable, horizontally uniform column" begin
             model = component_model(grid, cabbeling)
             set!(model, θ = (x, y, z) -> 283 + 2z, S = 0.035)
             j_b = computed(buoyancy_flux(model).z)
             @test maximum(abs, computed(ape_dissipation(model, reference_height(model)))) < 1e-10 * maximum(abs, j_b)
+
+            # R★ of `reference_tendency_work`, with the wall fluxes in its Ḃ (`total_buoyancy_tendencyᶜᶜᶜ`), is zero in
+            # a column whose cells are at their reference heights, with top, bottom and x-wall fluxes: zero to the
+            # round-off of z★ - z, relative to the scale Lz max |Ḃ| of Ṗ★
+            model = flux_bc_model(grid)
+            set!(model, θ = (x, y, z) -> 283 + 2z, S = 0.035)
+            R★ = computed(reference_tendency_work(model, reference_height(model)))
+            @test maximum(abs, R★) < 1e-12 * grid.Lz * maximum(abs, computed(buoyancy_tendency(model)))
         end
     end
 end

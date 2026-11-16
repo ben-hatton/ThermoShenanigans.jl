@@ -64,8 +64,9 @@ gravitational energy 𝒢★ are defined for it. Its diagnostics are:
   fluxes: `entropy_production`, `potential_energy_conversion`, `thermodynamic_operation(model, potential_energy)`,
   `background_potential_energy`, `bpe_flux`, `bpe_advection` and `spurious_bpe_production`.
 
-Only a Fickian `ScalarDiffusivity` with constant κ is supported. The diagnostic fluxes are zero at walls, so that they
-exclude the wall fluxes of the `ValueBoundaryCondition`s and `GradientBoundaryCondition`s that a Fickian model accepts.
+Only a Fickian `ScalarDiffusivity` with constant κ is supported. For both closures, the diagnostic fluxes carry the wall
+fluxes of every boundary condition the model accepts: `FluxBoundaryCondition`s, and for a Fickian model also
+`ValueBoundaryCondition`s and `GradientBoundaryCondition`s, whose wall fluxes its closure carries.
 
 A model is built in either of two ways:
 

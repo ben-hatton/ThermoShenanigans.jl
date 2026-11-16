@@ -12,7 +12,8 @@ halos of a Field at their location, which keeps the types of the diagnostics sma
 so that 𝒲★ = p★ᶜᶜᶜ - p★(z★) needs no knowledge of the method.
 
 The reference term R★ = Ṗ★(z) - Ṗ★(z★) of the APE budget is formed in the same way from the tendency Ṗ★ = ∂p★/∂t of
-the reference potential, due to the buoyancy tendency Ḃ = ADV_b + σ_b - ∇·j_b of every cell. In the continuum,
+the reference potential, due to the buoyancy tendency Ḃ = ADV_b + σ_b - ∇·j_b of every cell, whose j_b includes the
+wall fluxes of θ and S that the model applies to the boundary cells. In the continuum,
 advection only rearranges the fluid and leaves the reference state unchanged, but the model's discrete advection
 ADV_b = - b_θ ∇·(u θ) - b_S ∇·(u S) does not, so that Ṗ★ includes it:
 
@@ -111,9 +112,10 @@ one level deep, which keeps the types, and so the compile times, of the diagnost
     @inbounds buoyancy[i, j, k] = buoyancy_perturbationᶜᶜᶜ(i, j, k, grid, buoyancy_formulation, tracers)
 end
 
-@kernel function _compute_buoyancy_tendency!(buoyancy_tendency, grid, advection, clock, fields, parameters)
+@kernel function _compute_buoyancy_tendency!(buoyancy_tendency, grid, advection, clock, fields, parameters, walls)
     i, j, k = @index(Global, NTuple)
-    @inbounds buoyancy_tendency[i, j, k] = total_buoyancy_tendencyᶜᶜᶜ(i, j, k, grid, advection, clock, fields, parameters)
+    @inbounds buoyancy_tendency[i, j, k] = total_buoyancy_tendencyᶜᶜᶜ(i, j, k, grid, advection, clock, fields, parameters,
+                                                                      walls)
 end
 
 function compute!(profile::ReferenceProfileField, time = nothing)
@@ -199,22 +201,24 @@ reference_profile(z★, data, LX, LY, LZ) =
 
 Operand of the `Field` Ṗ★(z★), the tendency of the reference potential at each cell's reference height, used by
 the reference term R★ of [`reference_tendency_work`](@ref). Its `compute!` computes the reference state, the
-buoyancy tendency Ḃ = ADV_b + σ_b - ∇·j_b of the model, including its discrete advection, and then the tendency of
-the reference state with the method of the reference state. Fields:
+buoyancy tendency Ḃ = ADV_b + σ_b - ∇·j_b of the model, including its discrete advection and its wall fluxes of θ and
+S, and then the tendency of the reference state with the method of the reference state. Fields:
 
 * `reference_height`: the reference height `Field` z★, whose operand is a [`ReferenceState`](@ref)
-* `advection`, `clock`, `fields` and `parameters`: the model's advection schemes, clock, the data of its velocities
-  and tracers, and the parameters of the production terms, from which Ḃ is computed
+* `advection`, `clock`, `fields`, `parameters` and `walls`: the model's advection schemes, clock, the data of its
+  velocities and tracers, the parameters of the production terms, and the boundary conditions, clock and field data
+  from which its wall fluxes of θ and S are evaluated, from which Ḃ is computed
 * `buoyancy_tendency`: the data of Ḃ at (Center, Center, Center)
 * `reference_tendency`: the data of Ṗ★ at each level, at (Nothing, Nothing, Center)
 * `workspace`: storage specific to the method
 """
-struct ReferenceTendency{Z, A, C, F, P, B, R, W}
+struct ReferenceTendency{Z, A, C, F, P, L, B, R, W}
     reference_height :: Z
     advection :: A
     clock :: C
     fields :: F
     parameters :: P
+    walls :: L
     buoyancy_tendency :: B
     reference_tendency :: R
     workspace :: W
@@ -233,7 +237,7 @@ function compute!(parcel_tendency::ReferenceTendencyField, time = nothing)
     compute_at!(z★, time)
     grid = z★.grid
     launch!(architecture(grid), grid, :xyz, _compute_buoyancy_tendency!, tendency.buoyancy_tendency, grid,
-            tendency.advection, tendency.clock, tendency.fields, tendency.parameters)
+            tendency.advection, tendency.clock, tendency.fields, tendency.parameters, tendency.walls)
     compute_reference_tendency!(parcel_tendency, tendency, z★.operand.method)
     fill_halo_regions!(parcel_tendency)
     set_status!(parcel_tendency.status, time)
@@ -244,15 +248,15 @@ end
     reference_tendency(model, z★)
 
 Return the tendency Ṗ★(z★) of the reference potential at each cell's reference height, as a `Field` at
-(Center, Center, Center), due to the buoyancy tendency Ḃ = ADV_b + σ_b - ∇·j_b of `model`, for the reference
-height `Field` z★ returned by [`reference_height`](@ref). Its operand is a [`ReferenceTendency`](@ref), whose
-`reference_tendency` holds Ṗ★ at each level.
+(Center, Center, Center), due to the buoyancy tendency Ḃ = ADV_b + σ_b - ∇·j_b of `model`, wall fluxes included, for
+the reference height `Field` z★ returned by [`reference_height`](@ref). Its operand is a [`ReferenceTendency`](@ref),
+whose `reference_tendency` holds Ṗ★ at each level.
 """
 function reference_tendency(model, z★)
     grid = z★.grid
     method = z★.operand.method
     tendency = ReferenceTendency(z★, model.advection, model.clock, velocities_and_tracers(model), production_parameters(model),
-                                 field_data_at(Center, Center, Center, grid), field_data_at(Nothing, Nothing, Center, grid),
-                                 reference_tendency_workspace(method, grid))
+                                 wall_conditions(model), field_data_at(Center, Center, Center, grid),
+                                 field_data_at(Nothing, Nothing, Center, grid), reference_tendency_workspace(method, grid))
     return Field{Center, Center, Center}(grid; operand = tendency, status = FieldStatus())
 end

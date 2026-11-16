@@ -270,10 +270,12 @@ your own.
 ## Discretisation
 
 All thermodynamic functions are evaluated at cell centres from the centred $\theta$, $S$ and $z$, and then
-differenced or interpolated to faces. The diagnostic fluxes are zero at walls, where Oceananigans applies the
-boundary conditions. For the consistent closure these are also the model's fluxes; the Fickian closure of
-`consistent = false` carries the wall fluxes of `ValueBoundaryCondition` and `GradientBoundaryCondition`, which the
-diagnostics exclude.
+differenced or interpolated to faces. The closure fluxes of the consistent closure are zero at walls, where
+Oceananigans applies the `FluxBoundaryCondition`s to the boundary cells; the Fickian closure of `consistent = false`
+also carries the wall fluxes of `ValueBoundaryCondition` and `GradientBoundaryCondition`. The diagnostic fluxes carry
+the wall fluxes that the model applies, for both closures, and the energy fluxes at a wall take the coefficients
+($b_\theta$, $b_S$, $\Upsilon$, $\pi$, $m$) of the boundary cell, to whose tendency the wall flux is applied, so that
+the local budgets hold in the boundary cells as well.
 
 The discrete equations conserve energy exactly (up to round-off and the time-stepping error) because of three choices:
 
@@ -301,10 +303,13 @@ $\sigma_\theta$ evaluates $\varepsilon$ without closure fields, so momentum clos
 
 **Boundary conditions.** Wall fluxes of $\theta$ and $S$ are set only by `FluxBoundaryCondition` (the default is
 no flux); `ValueBoundaryCondition` and `GradientBoundaryCondition` are not supported with the consistent closure
-(they are with `consistent = false`, and the diagnostics then exclude their wall fluxes). A prescribed flux is a flux
-of $\theta$, not of heat: the energy input is $\pi Q_\theta + m Q_S$ per unit area at the boundary cell, so a heat
-flux $Q_H$ corresponds to
-$Q_\theta = Q_H / (\rho_0 \pi)$.
+(they are with `consistent = false`, and the diagnostics include their wall fluxes). A prescribed flux is a flux
+of $\theta$, not of heat: the energy input is $\pi_1 Q_\theta + m_1 Q_S$ per unit area, with $\pi$ and $m$ of the
+boundary cell, so a heat flux $Q_H$ corresponds to $Q_\theta = Q_H / (\rho_0 \pi(\theta_1, S_1, z_1))$, a
+field-dependent flux for a nonlinear equation of state. Equal heat fluxes at the top and bottom of a Rayleigh–Bénard
+run then give zero net energy input, whereas equal $\theta$ fluxes give
+$(\pi_\text{bottom} - \pi_\text{top}) Q_\theta \approx b_\theta Q_\theta H$ per unit area, of the order of the
+integrated $\varepsilon$.
 
 ## Examples
 

@@ -19,17 +19,17 @@ diagnostic_values(field::Field) = Array(interior(compute!(field)))
 diagnostic_values(operation) = diagnostic_values(Field(operation))
 
 #=
-Models on `arch` and on the CPU in the same random state, each after one time step. The smooth state is symmetric in
-y, so that pairs of cells share a buoyancy to within round-off, and the round-off differences of the two
-architectures could order them differently in the sorted reference state. No two cells of a random state are that
-close in buoyancy, so the reference states of the two architectures agree.
+Models built by `build(grid, thermodynamics; model_kwargs...)` on `arch` and on the CPU in the same random state, each
+after one time step. The smooth state is symmetric in y, so that pairs of cells share a buoyancy to within round-off,
+and the round-off differences of the two architectures could order them differently in the sorted reference state. No
+two cells of a random state are that close in buoyancy, so the reference states of the two architectures agree.
 =#
-function comparison_models(arch, FT; model_kwargs...)
-    cpu = component_model(architecture_grid(CPU(), FT), architecture_thermodynamics(FT); model_kwargs...)
+function comparison_models(arch, FT; build = component_model, model_kwargs...)
+    cpu = build(architecture_grid(CPU(), FT), architecture_thermodynamics(FT); model_kwargs...)
     set_random_state!(cpu)
     values = map(field -> Array(interior(field)), merge(cpu.velocities, cpu.tracers))
 
-    device = component_model(architecture_grid(arch, FT), architecture_thermodynamics(FT); model_kwargs...)
+    device = build(architecture_grid(arch, FT), architecture_thermodynamics(FT); model_kwargs...)
     set!(device; values...)
 
     for model in (device, cpu)
@@ -150,14 +150,27 @@ function test_architectures()
     round-off, which differs between architectures. The Float32 diagnostics on the GPU are checked to be finite above.
     =#
     if test_gpu
-        @testset "GPU diagnostics match the CPU [Float64]" begin
-            test_architectures_match(comparison_models(GPU(), Float64)...)
+        #=
+        With Flux conditions (`flux_bc_model`, tracers θ, S and c): a time step with the conditions on the device, the
+        zero flux of the passive tracer c (`tracer_flux_*(…, ::Val, …)`), and the wall fluxes of the diagnostics, from
+        `wall_conditions(model)` adapted to the device: `lateral_boundary_flux` (`getbc`) on the x walls,
+        `vertical_boundary_flux` (`explicit_flux`) on the bottom and top, `boundary_condition_flux_*`,
+        `boundary_cell_value_*`, and the wall values of j_θ, j_S, j_b, j_𝒜, j_ℬ, Ḃ and R★
+        =#
+        @testset "GPU diagnostics match the CPU [$label, Float64]" for
+                (label, build) in (("no flux", component_model), ("Flux conditions", flux_bc_model))
+            test_architectures_match(comparison_models(GPU(), Float64; build)...)
         end
 
-        # The Fickian fluxes of Oceananigans' `diffusive_flux_*` through the wall masks, the zero σ_θ, and every
-        # diagnostic that a Fickian model supports
-        @testset "GPU Fickian diagnostics match the CPU [Float64]" begin
-            test_architectures_match(comparison_models(GPU(), Float64; consistent = false)...; refused = fickian_refused)
+        #=
+        The Fickian fluxes of Oceananigans' `diffusive_flux_*` through the wall masks, the zero σ_θ, and every
+        diagnostic that a Fickian model supports. With wall conditions (`fickian_wall_model`), the closure's own wall
+        flux of a Value and a Gradient condition (`closure_wall_flux_*`, through `x/y/z_peripheral_node`), added to the
+        wall fluxes of Flux conditions on the x walls
+        =#
+        @testset "GPU Fickian diagnostics match the CPU [$label, Float64]" for
+                (label, build) in (("no flux", fickian_model), ("wall conditions", fickian_wall_model))
+            test_architectures_match(comparison_models(GPU(), Float64; build)...; refused = fickian_refused)
         end
 
         # The θ forcing as `MultipleForcings` of a user forcing and σ_θ
