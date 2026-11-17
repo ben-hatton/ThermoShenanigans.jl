@@ -197,11 +197,12 @@ The test commands below follow `CLAUDE.md` (one persistent session, `revise()` b
   against a finite difference of 𝒜 along the model's tendencies, for every model: consistent, Fickian, Flux
   conditions, Fickian wall conditions and equal heat fluxes. Asserting the new diagnostic against `budget` there ties it
   to that finite difference.
-  - Move `compute_flux_bc_tendencies!(model)` (line 12) down, to just after
-    `ape_tendency_values = computed(ape_tendency(model, z★))`, which needs z★ and so goes after line 16. Before that
-    call, `Gⁿ` does not yet hold F, which the diagnostic adds itself.
-  - Add `@test ape_tendency_values ≈ budget rtol = 1e-8`.
-  - Leave everything else in the function unchanged.
+  - Directly after `z★ = reference_height(model)` (line 16), add `ape_tendency_values = computed(ape_tendency(model, z★))`.
+  - Move lines 12-14 (`compute_flux_bc_tendencies!(model)` and the reading of `G`, `Gθ` and `GS`) together, to just
+    after the new diagnostics of steps 5 and 6. The diagnostics then read `Gⁿ` before F is added (they add F
+    themselves), while the finite difference still uses `Gθ` and `GS` with F.
+  - Add `@test ape_tendency_values ≈ budget rtol = 1e-8` next to the existing assertions.
+  - Apart from these lines and those of step 6, leave the function unchanged.
 - Run `run_tests("ape_budget")`.
 
 ### 6. ∂ₜℬ
@@ -213,10 +214,11 @@ The test commands below follow `CLAUDE.md` (one persistent session, `revise()` b
   > π − Υ b_θ = π(θ, S, z★) because b does not depend on z; the general form is kept for thermodynamics in which b
   > depends on z.
 
-- **Update `test_budgets_close`.** Inside its `if bpe` block, before the moved `compute_flux_bc_tendencies!(model)`,
-  compute `bpe_tendency(model, z★)` into an array and assert it equals `bpe_budget`, with atol = 1e-12 ×
-  `maximum(abs, computed(potential_energy_tendency(model)))`. π ≈ cₚ in ∂ₜ𝒫 sets the round-off scale. This ties
-  `bpe_tendency` to the existing finite difference of ℬ.
+- **Update `test_budgets_close`.** Next to `ape_tendency_values`, before the moved `compute_flux_bc_tendencies!`, and
+  only when `bpe` is true, compute `bpe_tendency(model, z★)` and `potential_energy_tendency(model)` into arrays. In the
+  `if bpe` block of the assertions, assert that `bpe_tendency` equals `bpe_budget`, with atol = 1e-12 ×
+  `maximum(abs, ∂ₜ𝒫)`. π ≈ cₚ in ∂ₜ𝒫 sets the round-off scale. This ties `bpe_tendency` to the existing finite
+  difference of ℬ.
 - **Update the "PE budget splits" testset** (`test_bpe_budget.jl:131-160`).
   - Rename its locals `ape_tendency` and `bpe_tendency` to `ape_budget` and `bpe_budget`, since they would shadow the
     exports. Keep its assertions unchanged.
