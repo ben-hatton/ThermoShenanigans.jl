@@ -28,8 +28,8 @@ using CairoMakie
 θ_deep, S_deep       = 273.15 + 0.5, 0.0347  # Θ = 0.5 °C,  S = 34.7 g/kg
 θ_shallow, S_shallow = 273.15 - 1.5, 0.03458 # Θ = -1.5 °C, S = 34.58 g/kg
 
-g, β, γ = 9.80665, 0.78, 1e-5
-Δb = g * 0.0046 / 1027 # b(shallow) - b(deep), from Δρ = -0.0046 kg m⁻³
+g, β, γ = 10.0, 0.8, 1e-5
+Δb = g * 0.005 / 1000 # b(shallow) - b(deep), from Δρ = -0.0046 kg m⁻³
 
 # We choose α so that b(shallow) - b(deep) = Δb,
 
@@ -38,7 +38,7 @@ g, β, γ = 9.80665, 0.78, 1e-5
 
 thermodynamics = CabbelingBoussinesqThermodynamics(thermal_expansion = α, haline_contraction = β, cabbeling_coefficient = γ,
                                                    reference_temperature = θ_deep, reference_salinity = S_deep,
-                                                   reference_heat_capacity = 3991.86795711963, gravitational_acceleration = g)
+                                                   reference_heat_capacity = 4000., gravitational_acceleration = g)
 
 # At the interface, z = -0.5 m, the shallow layer is lighter than the deep layer, but an even mixture of the two is denser:
 
@@ -59,8 +59,8 @@ model = NonhydrostaticModel(grid; tracers = (:θ, :S), components...)
 
 # The interface at z = -0.5 m is seeded with small-amplitude salinity noise.
 
-θᵢ(x, z) = z > -0.5 ? θ_shallow : θ_deep
-Sᵢ(x, z) = (z > -0.5 ? S_shallow : S_deep) + 2e-7 * randn() * exp(-((z + 0.5) / 0.02)^2)
+θᵢ(x, z) = z > z_interface ? θ_shallow : θ_deep
+Sᵢ(x, z) = (z > z_interface ? S_shallow : S_deep) + 2e-7 * randn() * exp(-((z + 0.5) / 0.02)^2)
 set!(model, θ = θᵢ, S = Sᵢ)
 
 # ## Simulation
