@@ -48,21 +48,23 @@ Oceananigans' default `Centered(order = 2)` advection. With `consistent = true`,
 `FluxBoundaryCondition`s.
 
 The dynamics of a Fickian (`consistent = false`) model never use the internal energy h⁰ or the reference pressure
-height z₀, so that of the potential-type energies only the available potential energy 𝒜 and the background
-gravitational energy 𝒢★ are defined for it. Its diagnostics are:
+height z₀, so that of the potential-type energies only the gravitational energy 𝒢, the available potential energy 𝒜 and
+the background gravitational energy 𝒢★ are defined for it, with z₀ only setting the origin of z in 𝒢 and 𝒢★. Its
+diagnostics are:
 
 * supported: `thermodynamic_operation` (of every function but `potential_energy`), `viscous_dissipation`,
   `buoyancy_production`, `nonlinear_buoyancy_production`, `θ_flux`, `salt_flux`, `buoyancy_flux`, `buoyancy_work`,
-  `buoyancy_tendency`, `advective_buoyancy_tendency`, `reference_height`, `reference_displacement`,
-  `reference_potential`, `reference_buoyancy`, `reference_work`, `available_potential_energy`,
-  `background_gravitational_energy`, `ape_production`, `nonlinear_ape_production`, `ape_dissipation`, `ape_flux`,
-  `ape_advection`, `available_buoyancy_work`, `spurious_ape_production`, `reference_tendency_work`, `kinetic_energy`,
-  `ke_advection` and `ke_flux`;
+  `buoyancy_tendency`, `advective_buoyancy_tendency`, `gravitational_energy`, `reference_height`,
+  `reference_displacement`, `reference_potential`, `reference_buoyancy`, `reference_work`,
+  `available_potential_energy`, `background_gravitational_energy`, `ape_production`, `nonlinear_ape_production`,
+  `ape_dissipation`, `ape_flux`, `ape_advection`, `available_buoyancy_work`, `spurious_ape_production`,
+  `reference_tendency_work`, `kinetic_energy`, `ke_advection` and `ke_flux`;
 * supported and identically zero, since the model has no θ source: `θ_production`, `heating_buoyancy_production` and
   `heating_ape_production`;
 * refused, with a `MethodError` when the diagnostic is constructed, since they depend on h⁰ and z₀ or on the consistent
-  fluxes: `entropy_production`, `potential_energy_conversion`, `thermodynamic_operation(model, potential_energy)`,
-  `background_potential_energy`, `bpe_flux`, `bpe_advection` and `spurious_bpe_production`.
+  fluxes: `entropy_production`, `potential_energy_conversion`, `potential_energy(model)`, `internal_energy(model)`,
+  `thermodynamic_operation(model, potential_energy)`, `background_potential_energy`, `bpe_flux`, `bpe_advection` and
+  `spurious_bpe_production`.
 
 Only a Fickian `ScalarDiffusivity` with constant κ is supported. For both closures, the diagnostic fluxes carry the wall
 fluxes of every boundary condition the model accepts: `FluxBoundaryCondition`s, and for a Fickian model also

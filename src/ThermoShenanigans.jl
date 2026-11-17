@@ -13,13 +13,13 @@ export
     ThermodynamicBuoyancy, ThermodynamicDiffusivity, θ_production_forcing, thermodynamic_model_components,
 
     # Thermodynamic diagnostics
-    thermodynamic_operation, viscous_dissipation, θ_production, buoyancy_production,
+    thermodynamic_operation, internal_energy, viscous_dissipation, θ_production, buoyancy_production,
     heating_buoyancy_production, nonlinear_buoyancy_production, entropy_production, potential_energy_conversion,
     θ_flux, salt_flux, buoyancy_flux, buoyancy_work, buoyancy_tendency, advective_buoyancy_tendency,
 
     # Reference state and local energetics
     Sorting, reference_height, reference_displacement, reference_potential, reference_buoyancy, reference_work,
-    available_potential_energy, background_potential_energy, background_gravitational_energy,
+    available_potential_energy, background_potential_energy, gravitational_energy, background_gravitational_energy,
 
     # Local APE budget
     ape_production, heating_ape_production, nonlinear_ape_production, ape_dissipation, ape_flux, ape_advection,

@@ -65,10 +65,11 @@ end
 
 function test_architectures()
     @testset "Every exported diagnostic is compared between architectures" begin
-        # Exported names that are not diagnostics: types, thermodynamic functions f(θ, S, z, thermodynamics), and the
-        # constructors of the model components and of the θ forcing σ_θ
+        # Exported names that are not diagnostics: types, thermodynamic functions f(θ, S, z, thermodynamics) without a
+        # method f(model) (`potential_energy` has both), and the constructors of the model components and of the θ forcing σ_θ
         thermodynamics_type = typeof(cabbeling)
-        is_thermodynamic_function(f) = hasmethod(f, Tuple{Float64, Float64, Float64, thermodynamics_type})
+        is_thermodynamic_function(f) = hasmethod(f, Tuple{Float64, Float64, Float64, thermodynamics_type}) &&
+                                       !hasmethod(f, Tuple{NonhydrostaticModel})
         exported = filter(name -> name != :ThermoShenanigans, names(ThermoShenanigans))
         exported_values = map(name -> getproperty(ThermoShenanigans, name), exported)
         is_diagnostic = map(value -> !(value isa Type || value in (thermodynamic_model_components, θ_production_forcing) ||

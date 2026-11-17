@@ -25,8 +25,8 @@ function test_reference_state()
             z★, 𝒜, ℬ, 𝒲★, Υ, 𝒢★ = map(computed, (z★_field, available_potential_energy(z★_field),
                                                    background_potential_energy(model, z★_field), reference_work(z★_field),
                                                    reference_displacement(z★_field), background_gravitational_energy(model, z★_field)))
-            𝒫 = computed(thermodynamic_operation(model, potential_energy))
-            ℐ = computed(thermodynamic_operation(model, potential_enthalpy))
+            𝒫 = computed(potential_energy(model))
+            ℐ = computed(internal_energy(model))
             b = computed(KernelFunctionOperation{Center, Center, Center}(buoyancy_perturbationᶜᶜᶜ, grid, model.buoyancy.formulation,
                                                                          model.tracers))
 
@@ -52,7 +52,7 @@ function test_reference_state()
                 z★ = reference_height(model)
                 return map(computed, (available_potential_energy(z★), background_gravitational_energy(model, z★),
                                       background_potential_energy(model, z★),
-                                      thermodynamic_operation(model, potential_enthalpy)))
+                                      internal_energy(model)))
             end
             𝒜, 𝒢★, ℬ, ℐ = reservoirs(reference)
             𝒜′, 𝒢★′, ℬ′, ℐ′ = reservoirs(translated)
@@ -64,6 +64,34 @@ function test_reference_state()
             @test 𝒢★′ ≈ 𝒢★
             @test ℬ′ .- g * z₀ ≈ ℬ
             @test ℐ′ .+ 𝒢★′ .+ g * z₀ ≈ ℬ′ rtol = 1e-14
+        end
+
+        #=
+        The identities of the energy reservoirs in every cell: 𝒫 = ℐ + 𝒢 + g₀ z₀, ℬ = ℐ + 𝒢★ + g₀ z₀ (b and h⁰ are
+        independent of z) and 𝒜 = 𝒢 - 𝒢★ for the consistent model, and 𝒜 = 𝒢 - 𝒢★ for the Fickian model, the only one
+        whose terms it defines. `shifted` has z₀ = -40, so that g₀ z₀ ≠ 0 and 𝒢 and 𝒢★ are each about 40 b, much larger
+        than 𝒜: the round-off of 𝒢 - 𝒢★ is measured against 𝒢.
+        =#
+        @testset "Energy reservoir identities [$label, $closure]" for (label, thermodynamics) in (("linear", linear),
+                                                                                                 ("cabbeling", cabbeling),
+                                                                                                 ("z₀ = -40", shifted)),
+                                                                     closure in ("consistent", "Fickian")
+            g₀, z₀ = gravitational_acceleration(thermodynamics), reference_pressure_height(thermodynamics)
+            model = closure == "consistent" ? component_model(grid, thermodynamics) : fickian_model(grid, thermodynamics)
+            set_random_state!(model)
+            z★ = reference_height(model)
+            𝒜, 𝒢, 𝒢★ = map(computed, (available_potential_energy(z★), gravitational_energy(model),
+                                       background_gravitational_energy(model, z★)))
+
+            @test any(>(0), 𝒜)
+            @test maximum(abs, 𝒜 .- (𝒢 .- 𝒢★)) < 1e-14 * maximum(abs, 𝒢)
+
+            if closure == "consistent"
+                𝒫, ℐ, ℬ = map(computed, (potential_energy(model), internal_energy(model), background_potential_energy(model, z★)))
+                @test ℐ .+ 𝒢 .+ g₀ * z₀ ≈ 𝒫 rtol = 1e-14
+                @test ℐ .+ 𝒢★ .+ g₀ * z₀ ≈ ℬ rtol = 1e-14
+                @test 𝒜 .+ ℬ ≈ 𝒫 rtol = 1e-14
+            end
         end
 
         @testset "Stable, horizontally uniform column" begin

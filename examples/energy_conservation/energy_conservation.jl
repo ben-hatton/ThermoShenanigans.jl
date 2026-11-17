@@ -56,7 +56,7 @@ function run_energy_budget(grid, thermodynamics, initial_conditions, output_dir,
     set!(model; initial_conditions...)
 
     u, v, w = model.velocities
-    𝒫 = thermodynamic_operation(model, potential_energy)
+    𝒫 = potential_energy(model)
     𝒫₀ = CenterField(grid)
     set!(𝒫₀, 𝒫)
 

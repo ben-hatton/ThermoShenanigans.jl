@@ -34,8 +34,8 @@ budget holds in the boundary cells as well. Background fields are not included.
 $(TYPEDSIGNATURES)
 
 Return the background potential energy ℬ = 𝒫(θ, S, z★) - 𝒲★ of `model` at (Center, Center, Center), so that
-𝒜 + ℬ = 𝒫. The internal energy ℐ = h⁰, `thermodynamic_operation(model, potential_enthalpy)`,
-lies entirely in ℬ = ℐ + 𝒢★ + g₀ z₀; see [`background_gravitational_energy`](@ref). It needs a consistent model
+𝒜 + ℬ = 𝒫. The internal energy ℐ = h⁰, [`internal_energy`](@ref), lies entirely in ℬ = ℐ + 𝒢★ + g₀ z₀; see
+[`background_gravitational_energy`](@ref). It needs a consistent model
 (`consistent = true`), since ℬ depends on h⁰ and z₀: for a Fickian (`consistent = false`) model it throws a
 `MethodError`.
 """
@@ -68,6 +68,57 @@ function background_gravitational_energy(model, z★::ReferenceHeightField)
     return center_operation(background_gravitational_energyᶜᶜᶜ, model.grid, state.buoyancy, z₀, z★, state.reference_potential,
                             state.parcel_reference_potential)
 end
+
+#=
+𝒢 = - b (z - z₀) at the height z of the cell centre, the gravitational part of 𝒫. Compared with `minus_bz_ccc` of
+Oceanostics v0.21.7 (`src/PotentialEnergyEquation.jl:55`), - b z from `buoyancy_perturbationᶜᶜᶜ` and `Zᶜᶜᶜ`: here the
+height is z - z₀, through `buoyancy_height` (`thermodynamic_buoyancy.jl`), which evaluates b as `buoyancy_perturbationᶜᶜᶜ`
+does, at the same znode, so that 𝒢 - 𝒢★ and 𝒜 = b Υ + 𝒲★ use the same b.
+=#
+@inline gravitational_energyᶜᶜᶜ(i, j, k, grid, buoyancy_formulation, fields) =
+    - thermodynamic_functionᶜᶜᶜ(i, j, k, grid, buoyancy_height, buoyancy_formulation, fields)
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the gravitational energy 𝒢 = - b (z - z₀) of `model` at (Center, Center, Center), with z the height of the cell
+centre and z₀ the `reference_pressure_height` of its thermodynamics. In every cell, to round-off,
+
+    𝒫 = ℐ + 𝒢 + g₀ z₀,      𝒜 = 𝒢 - 𝒢★,
+
+with 𝒫 the [`potential_energy`](@ref), ℐ the [`internal_energy`](@ref), 𝒜 the [`available_potential_energy`](@ref) and
+𝒢★ the [`background_gravitational_energy`](@ref) of the same state. Both hold for any thermodynamics: 𝒫, ℐ and 𝒢 are
+evaluated at the (θ, S, z) of the cell, and 𝒜 = b (z★ - z) + 𝒲★ and 𝒢★ = - b (z★ - z₀) - 𝒲★ take the same b as 𝒢,
+that of the cell at its own height, so that z₀ cancels.
+
+z₀ only sets the origin of z: 𝒢 = - b z' with z' = z - z₀ the height above z₀, and 𝒜 = 𝒢 - 𝒢★ is independent of it.
+𝒢 depends only on b, so that it is defined for a Fickian (`consistent = false`) model as well, whose dynamics never use
+z₀; there, with z₀ = 0, 𝒢 = - b z.
+
+```jldoctest
+julia> using Oceananigans, ThermoShenanigans
+
+julia> grid = RectilinearGrid(size = (4, 4), x = (0, 1), z = (-1, 0), topology = (Periodic, Flat, Bounded));
+
+julia> thermodynamics = CabbelingBoussinesqThermodynamics(thermal_expansion = 2e-4, haline_contraction = 0.8,
+                                                          reference_temperature = 283, reference_salinity = 0.035,
+                                                          reference_heat_capacity = 4000);
+
+julia> components = thermodynamic_model_components(grid, thermodynamics; viscosity = 1e-6, thermal_diffusivity = 1e-7,
+                                                   salt_diffusivity = 1e-9, consistent = false);
+
+julia> model = NonhydrostaticModel(grid; tracers = (:θ, :S), components...);
+
+julia> set!(model, θ = 284, S = 0.035);
+
+julia> 𝒢 = Field(gravitational_energy(model));
+
+julia> round(𝒢[1, 1, 1], digits = 10) # - g α (θ - T₀) z in the bottom cell, z = -0.875, for this Fickian model
+0.0017161637
+```
+"""
+gravitational_energy(model) =
+    center_operation(gravitational_energyᶜᶜᶜ, model.grid, model.buoyancy.formulation, field_data(model.tracers))
 
 # Generated: potential_energy_flux_{x,y,z}, j_𝒫 = ℑπ j_θ + ℑm j_S at interior faces and π₁ Q_θ + m₁ Q_S at walls,
 # the diffusive flux of 𝒫; bpe_flux_{x,y,z}, the components of j_ℬ = p★ u + j_𝒫 - j_𝒜 at faces

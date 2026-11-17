@@ -106,7 +106,7 @@ simulation.output_writers[:profiles] = JLD2Writer(model, (; b★ = reference_buo
 # Volume integrals (per metre in y). Changes in ℐ are differenced cell by cell from the initial state, since
 # ℐ = cₚ₀ (θ - T₀) is much larger than its changes. ∫ 𝒲★ dV vanishes, up to round-off.
 
-ℐ = thermodynamic_operation(model, potential_enthalpy)
+ℐ = internal_energy(model)
 ℐ₀ = CenterField(grid)
 set!(ℐ₀, ℐ)
 

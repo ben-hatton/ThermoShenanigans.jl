@@ -81,7 +81,9 @@ julia> round(T[1, 1, 4], digits = 6) # T = θ at z₀ = 0, slightly warmer at th
 `potential_energy` needs a consistent model (`consistent = true`), since 𝒫 depends on h⁰ and z₀, which the dynamics
 of a Fickian (`consistent = false`) model never use: for a Fickian model, `thermodynamic_operation(model,
 potential_energy)` throws a `MethodError`. The other functions, such as π, m, h⁰ and μ, remain thermodynamic properties
-of the state of a Fickian model, but have no energetic meaning for it.
+of the state of a Fickian model, but have no energetic meaning for it. The energy reservoirs 𝒫 and ℐ are also returned
+by [`potential_energy(model)`](@ref potential_energy) and [`internal_energy`](@ref), both of which refuse a
+Fickian model.
 """
 thermodynamic_operation(model, f) = thermodynamic_function_operation(model, f)
 
@@ -90,6 +92,102 @@ thermodynamic_operation(model, f::typeof(potential_energy)) =
 
 thermodynamic_operation(::ThermodynamicDiffusivity, model, f::typeof(potential_energy)) =
     thermodynamic_function_operation(model, f)
+
+#=
+The energy reservoirs 𝒫 and ℐ of the heuristic split 𝒫 = ℐ + 𝒢 + g₀ z₀ (`ape_budget.jl`), with the gravitational energy
+𝒢 in `bpe_budget.jl`, next to 𝒢★. Every term is evaluated with the (θ, S) and the height z of the cell centre, so that
+the split holds in every cell to round-off, for any thermodynamics.
+=#
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the potential energy 𝒫 = h⁰ - b (z - z₀) + g₀ z₀ of `model` at (Center, Center, Center), the field of
+`potential_energy(θ, S, z, thermodynamics)` at the cell centres, equal to `thermodynamic_operation(model,
+potential_energy)`. In every cell, to round-off and for any thermodynamics,
+
+    𝒫 = ℐ + 𝒢 + g₀ z₀,
+
+with ℐ the [`internal_energy`](@ref) and 𝒢 the [`gravitational_energy`](@ref), and, with the reference height z★ of
+[`reference_height`](@ref), 𝒫 = 𝒜 + ℬ, the [`available_potential_energy`](@ref) and the
+[`background_potential_energy`](@ref).
+
+It needs a consistent model (`consistent = true`), since 𝒫 depends on h⁰ and z₀, which the dynamics of a Fickian
+(`consistent = false`) model never use: for a Fickian model it throws a `MethodError`.
+
+```jldoctest
+julia> using Oceananigans, ThermoShenanigans
+
+julia> grid = RectilinearGrid(size = (4, 4), x = (0, 1), z = (-1, 0), topology = (Periodic, Flat, Bounded));
+
+julia> thermodynamics = CabbelingBoussinesqThermodynamics(thermal_expansion = 2e-4, haline_contraction = 0.8,
+                                                          reference_temperature = 283, reference_salinity = 0.035,
+                                                          reference_heat_capacity = 4000);
+
+julia> components = thermodynamic_model_components(grid, thermodynamics; viscosity = 1e-6, thermal_diffusivity = 1e-7,
+                                                   salt_diffusivity = 1e-9);
+
+julia> model = NonhydrostaticModel(grid; tracers = (:θ, :S), components...);
+
+julia> set!(model, θ = 284, S = 0.035);
+
+julia> 𝒫 = Field(potential_energy(model));
+
+julia> round(𝒫[1, 1, 1], digits = 8) # cₚ₀ (θ - T₀) - g α (θ - T₀) z in the bottom cell, z = -0.875
+4000.00171616
+```
+"""
+potential_energy(model) = potential_energy(production_parameters(model).diffusivity, model)
+
+potential_energy(::ThermodynamicDiffusivity, model) = thermodynamic_function_operation(model, potential_energy)
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the internal energy ℐ = h⁰ of `model` at (Center, Center, Center), the potential enthalpy of the state, equal to
+`thermodynamic_operation(model, potential_enthalpy)`. In every cell, to round-off,
+
+    𝒫 = ℐ + 𝒢 + g₀ z₀
+
+for any thermodynamics, with 𝒫 the [`potential_energy`](@ref) and 𝒢 the
+[`gravitational_energy`](@ref), and
+
+    ℬ = ℐ + 𝒢★ + g₀ z₀
+
+for any thermodynamics whose h⁰ and b are independent of z, as `AbstractBoussinesqThermodynamics` requires, with ℬ the
+[`background_potential_energy`](@ref) and 𝒢★ the [`background_gravitational_energy`](@ref): ℬ evaluates h⁰ and b at the
+reference height z★, ℐ and 𝒢★ at the height z of the cell. ℐ thus lies entirely in ℬ.
+
+It needs a consistent model (`consistent = true`), since the dynamics of a Fickian (`consistent = false`) model never
+use h⁰, which is then no energy reservoir: for a Fickian model it throws a `MethodError`.
+`thermodynamic_operation(model, potential_enthalpy)` returns h⁰, as a thermodynamic property of the state, for either
+model.
+
+```jldoctest
+julia> using Oceananigans, ThermoShenanigans
+
+julia> grid = RectilinearGrid(size = (4, 4), x = (0, 1), z = (-1, 0), topology = (Periodic, Flat, Bounded));
+
+julia> thermodynamics = CabbelingBoussinesqThermodynamics(thermal_expansion = 2e-4, haline_contraction = 0.8,
+                                                          reference_temperature = 283, reference_salinity = 0.035,
+                                                          reference_heat_capacity = 4000);
+
+julia> components = thermodynamic_model_components(grid, thermodynamics; viscosity = 1e-6, thermal_diffusivity = 1e-7,
+                                                   salt_diffusivity = 1e-9);
+
+julia> model = NonhydrostaticModel(grid; tracers = (:θ, :S), components...);
+
+julia> set!(model, θ = 284, S = 0.035);
+
+julia> ℐ = Field(internal_energy(model));
+
+julia> ℐ[1, 1, 1] # cₚ₀ (θ - T₀)
+4000.0
+```
+"""
+internal_energy(model) = internal_energy(production_parameters(model).diffusivity, model)
+
+internal_energy(::ThermodynamicDiffusivity, model) = thermodynamic_function_operation(model, potential_enthalpy)
 
 # Operation of the thermodynamic function f(θ, S, z, thermodynamics) of the model's tracers, at (Center, Center, Center)
 thermodynamic_function_operation(model, f) =

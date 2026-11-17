@@ -21,7 +21,8 @@ const source_groups = (
     diffusivity    = (sources = ["thermodynamic_diffusivity.jl", "model_components.jl"],
                       tests   = ["test_diffusivity.jl", "test_energy_conservation.jl", "test_architectures.jl"]),
 
-    # The architecture tests compare every exported diagnostic between architectures and float types
+    # The architecture tests compare every exported diagnostic between architectures and float types; the production
+    # tests also hold the energy reservoirs 𝒫, ℐ and 𝒢
     production     = (sources = ["production.jl", "diagnostics.jl"],
                       tests   = ["test_production.jl", "test_architectures.jl"]),
 
@@ -35,8 +36,9 @@ const source_groups = (
     ke_budget      = (sources = ["ke_budget.jl"],
                       tests   = ["test_ke_budget.jl", "test_bpe_budget.jl", "test_architectures.jl"]),
 
+    # The reference state tests hold the identities of 𝒢 and 𝒢★ with 𝒜, ℬ, ℐ and 𝒫
     bpe_budget     = (sources = ["bpe_budget.jl"],
-                      tests   = ["test_bpe_budget.jl", "test_architectures.jl"]),
+                      tests   = ["test_bpe_budget.jl", "test_reference_state.jl", "test_architectures.jl"]),
 
     # σ_θ of `θ_production_forcing`, with the production parameters it shares with the diagnostics, and a user θ forcing
     # combined with σ_θ

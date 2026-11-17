@@ -147,8 +147,9 @@ fickian_model(grid, thermodynamics; kwargs...) = component_model(grid, thermodyn
 fickian_constant_salinity_model(grid) = fickian_model(grid, cabbeling; tracers = (:θ,), constant_salinity = 0.035)
 
 # Labels, as in `exported_diagnostics`, of the diagnostics that a Fickian model refuses
-const fickian_refused = ("entropy_production", "potential_energy_conversion", "thermodynamic_operation(potential_energy)",
-                         "background_potential_energy", "bpe_flux", "bpe_advection", "spurious_bpe_production")
+const fickian_refused = ("entropy_production", "potential_energy_conversion", "potential_energy", "internal_energy",
+                         "thermodynamic_operation(potential_energy)", "background_potential_energy", "bpe_flux",
+                         "bpe_advection", "spurious_bpe_production")
 
 # `build()` throws the `MethodError` of the diagnostic `f` on the Fickian `ScalarDiffusivity` of its model
 function test_refused(f, build)
@@ -348,9 +349,10 @@ end
 # Every exported diagnostic
 
 # Grouped by their arguments: the model, the reference height z★, or both. Face fluxes return their (x, y, z) components.
-const model_diagnostics = (viscous_dissipation, θ_production, buoyancy_production, heating_buoyancy_production,
-                           nonlinear_buoyancy_production, entropy_production, potential_energy_conversion, buoyancy_work,
-                           buoyancy_tendency, advective_buoyancy_tendency, kinetic_energy, ke_advection)
+const model_diagnostics = (potential_energy, internal_energy, gravitational_energy, viscous_dissipation, θ_production,
+                           buoyancy_production, heating_buoyancy_production, nonlinear_buoyancy_production,
+                           entropy_production, potential_energy_conversion, buoyancy_work, buoyancy_tendency,
+                           advective_buoyancy_tendency, kinetic_energy, ke_advection)
 const model_fluxes = (θ_flux, salt_flux, buoyancy_flux)
 const reference_state_diagnostics = (reference_displacement, reference_potential, reference_buoyancy, reference_work,
                                      available_potential_energy)

@@ -98,6 +98,7 @@ where $z_0$ is the `reference_pressure_height` of the thermodynamics, the height
 reference pressure (0 by default). The potential energy is
 $\mathcal{P} = \Sigma - p \, \partial \Sigma / \partial p = h^0(\theta, S) - b(\theta, S) (z - z_0) + g z_0$.
 The thermodynamic functions of $z$, such as `potential_energy(θ, S, z, thermodynamics)`, take the height $z$ itself.
+
 The derivatives of $\Sigma$ at fixed $p$ give the thermodynamic conjugate variables relative to
 $(\theta, S, z)$:
 
@@ -106,6 +107,26 @@ $(\theta, S, z)$:
 | $\Sigma_\theta$ | $h^0_\theta(\theta, S) - b_\theta(\theta, S) (z - z_0)$ | Exner function, $\pi$ |
 | $\Sigma_S$ | $h^0_S(\theta, S) - b_S(\theta, S) (z - z_0)$ | Chemical potential analogue, $m$ [(de Szoeke, 2000)](https://journals.ametsoc.org/view/journals/phoc/30/11/1520-0485_2001_031_2814__2.0.co_2.xml) |
 | $\Sigma_z$ | $-b(\theta, S)$ | Minus the buoyancy |
+
+### Energy reservoirs
+
+Each of these diagnostics returns an operation at the cell centres, computed with `Field(...)`; those of the reference
+state take the reference height `z★ = reference_height(model)`, with $z_\star$ the height of each parcel in the
+adiabatically sorted state, $\Upsilon = z_\star - z$, and $\mathcal{W}_\star = p_\star(z) - p_\star(z_\star)$:
+
+| Diagnostic | Reservoir | Definition | Fickian (`consistent = false`) model |
+|---|---|---|---|
+| `kinetic_energy(model)` | $\mathcal{K}$ | $\tfrac{1}{2} \lvert \mathbf{u} \rvert^2$ | supported |
+| `potential_energy(model)` | $\mathcal{P}$ | $h^0 - b (z - z_0) + g z_0$ | refused |
+| `internal_energy(model)` | $\mathcal{I}$ | $h^0$ | refused |
+| `gravitational_energy(model)` | $\mathcal{G}$ | $-b (z - z_0)$ | supported |
+| `available_potential_energy(z★)` | $\mathcal{A}$ | $b \Upsilon + \mathcal{W}_\star$ | supported |
+| `background_potential_energy(model, z★)` | $\mathcal{B}$ | $\mathcal{P}(\theta, S, z_\star) - \mathcal{W}_\star$ | refused |
+| `background_gravitational_energy(model, z★)` | $\mathcal{G}_\star$ | $-b (z_\star - z_0) - \mathcal{W}_\star$ | supported |
+
+In every cell, to round-off, $\mathcal{P} = \mathcal{I} + \mathcal{G} + g z_0 = \mathcal{A} + \mathcal{B}$,
+$\mathcal{A} = \mathcal{G} - \mathcal{G}_\star$ and $\mathcal{B} = \mathcal{I} + \mathcal{G}_\star + g z_0$, the last
+because $b$ and $h^0$ are independent of $z$. $z_0$ only sets the origin of $z$ in $\mathcal{G}$ and $\mathcal{G}_\star$.
 
 ### Temperature and chemical potential
 
@@ -211,10 +232,10 @@ $$
 \sigma_\theta = 0.
 $$
 
-Its dynamics never use $h^0$ or $z_0$, so that of the potential-type energies only the available potential energy
-$\mathcal{A}$ and the background gravitational energy $\mathcal{G}_\star$ are defined for it. The docstring of
-`thermodynamic_model_components` lists the diagnostics that a Fickian model supports, those that are identically zero
-for it, and those that it refuses with a `MethodError`.
+Its dynamics never use $h^0$ or $z_0$, so that of the potential-type energies only the gravitational energy
+$\mathcal{G}$, the available potential energy $\mathcal{A}$ and the background gravitational energy $\mathcal{G}_\star$
+are defined for it. The docstring of `thermodynamic_model_components` lists the diagnostics that a Fickian model
+supports, those that are identically zero for it, and those that it refuses with a `MethodError`.
 
 ### Built-in thermodynamics
 

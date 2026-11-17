@@ -19,7 +19,7 @@ function test_basic()
         @testset "𝒜 + ℬ = 𝒫 and 𝒜 ≥ 0" begin
             z★ = reference_height(model)
             𝒜, ℬ = computed(available_potential_energy(z★)), computed(background_potential_energy(model, z★))
-            @test 𝒜 .+ ℬ ≈ computed(thermodynamic_operation(model, potential_energy)) rtol = 1e-14
+            @test 𝒜 .+ ℬ ≈ computed(potential_energy(model)) rtol = 1e-14
             @test all(≥(0), 𝒜)
         end
 

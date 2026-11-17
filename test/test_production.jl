@@ -78,6 +78,34 @@ function test_production()
             test_refused(entropy_production, () -> entropy_production(model))
             test_refused(potential_energy_conversion, () -> potential_energy_conversion(model))
             test_refused(thermodynamic_operation, () -> thermodynamic_operation(model, potential_energy))
+            test_refused(potential_energy, () -> potential_energy(model))
+            test_refused(internal_energy, () -> internal_energy(model))
+        end
+
+        #=
+        The energy reservoirs 𝒫, ℐ and 𝒢 of `diagnostics.jl` and `bpe_budget.jl`. `shifted` has z₀ = -40, so that
+        g₀ z₀ ≠ 0 and z₀ enters 𝒢 = - b (z - z₀) as the origin of z.
+        =#
+        @testset "Energy reservoirs 𝒫 = ℐ + 𝒢 + g₀ z₀ [$label]" for (label, thermodynamics) in (("cabbeling", cabbeling),
+                                                                                                 ("z₀ = -40", shifted))
+            z = reshape(znodes(grid, Center()), 1, 1, :)
+            g₀, z₀ = gravitational_acceleration(thermodynamics), reference_pressure_height(thermodynamics)
+
+            model = component_model(grid, thermodynamics)
+            set_random_state!(model)
+            𝒫, ℐ, 𝒢 = map(computed, (potential_energy(model), internal_energy(model), gravitational_energy(model)))
+            b = computed(KernelFunctionOperation{Center, Center, Center}(thermodynamic_functionᶜᶜᶜ, grid, buoyancy,
+                                                                         model.buoyancy.formulation, model.tracers))
+
+            @test 𝒫 == computed(thermodynamic_operation(model, potential_energy))
+            @test ℐ == computed(thermodynamic_operation(model, potential_enthalpy))
+            @test 𝒢 ≈ .- b .* (z .- z₀) rtol = 1e-14
+            @test ℐ .+ 𝒢 .+ g₀ * z₀ ≈ 𝒫 rtol = 1e-14
+
+            # A Fickian model has 𝒢, with the same b and z₀
+            fickian = fickian_model(grid, thermodynamics)
+            set!(fickian; map(field -> Array(interior(field)), model.tracers)...)
+            @test computed(gravitational_energy(fickian)) == 𝒢
         end
 
         @testset "consistent = false is the standard closure" begin
