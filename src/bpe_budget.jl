@@ -243,3 +243,48 @@ spurious_bpe_production(model, z★::ReferenceHeightField) =
 spurious_bpe_production(::ThermodynamicDiffusivity, model, z★) =
     center_operation(spurious_bpe_productionᶜᶜᶜ, model.grid, z★, bpe_data_operation(z★), z★.operand.reference_buoyancy,
                      model.advection, model.buoyancy.formulation, velocities_and_tracers(model))
+
+#=
+∂ₜℬ = (π - Υ b_θ) ∂ₜθ + (m - Υ b_S) ∂ₜS - R★[ḃ], with R★[ḃ] from the Ṗ★(z★) of `prognostic_reference_tendency`. π - Υ b_θ
+= π(θ, S, z★) because b does not depend on z; the general form is kept for thermodynamics in which b depends on z.
+=#
+@inline bpe_tendencyᶜᶜᶜ(i, j, k, grid, z★, reference_tendency, parcel_tendency, buoyancy_formulation, fields, tendencies,
+                        walls) =
+    (thermodynamic_functionᶜᶜᶜ(i, j, k, grid, exner, buoyancy_formulation, fields) -
+     reference_displacementᶜᶜᶜ(i, j, k, grid, z★) * thermodynamic_functionᶜᶜᶜ(i, j, k, grid, ∂b∂θ, buoyancy_formulation, fields)) *
+    θ_tendencyᶜᶜᶜ(i, j, k, grid, tendencies, walls) +
+    (thermodynamic_functionᶜᶜᶜ(i, j, k, grid, chemical_potential_analogue, buoyancy_formulation, fields) -
+     reference_displacementᶜᶜᶜ(i, j, k, grid, z★) * thermodynamic_functionᶜᶜᶜ(i, j, k, grid, ∂b∂S, buoyancy_formulation, fields)) *
+    salt_tendencyᶜᶜᶜ(i, j, k, grid, buoyancy_formulation, tendencies, walls) -
+    reference_workᶜᶜᶜ(i, j, k, grid, reference_tendency, parcel_tendency)
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the tendency ∂ₜℬ = (π - Υ b_θ) ∂ₜθ + (m - Υ b_S) ∂ₜS - R★[ḃ] of the [`background_potential_energy`](@ref) of
+`model` at (Center, Center, Center), with ∂ₜθ = G_θ + F_θ and ∂ₜS = G_S + F_S, G the model's tendencies and F the
+tendencies of the fluxes of its `FluxBoundaryCondition`s, and R★[ḃ] the reference term of
+[`reference_tendency_work`](@ref) formed from ḃ = b_θ ∂ₜθ + b_S ∂ₜS. When σ_θ is the only forcing, in every cell
+
+    ∂ℬ/∂t = - Υ σ_b + εₐ - ∇·j_ℬ - ∇·(u ℬ) + ε - R★ + 𝒩_ℬ,
+
+exactly for a divergence-free velocity, when no two cells share a buoyancy, with Υ σ_b the [`ape_production`](@ref),
+εₐ the [`ape_dissipation`](@ref), j_ℬ the [`bpe_flux`](@ref), - ∇·(u ℬ) the [`bpe_advection`](@ref), ε the
+[`viscous_dissipation`](@ref), R★ the [`reference_tendency_work`](@ref) and 𝒩_ℬ the
+[`spurious_bpe_production`](@ref).
+
+It reads the model's tendencies `Gⁿ`, which `time_step!`, `set!` and `update_state!` compute for the current state; it
+is valid after any of them.
+
+It needs a consistent model (`consistent = true`), since it is the tendency of ℬ: for a Fickian (`consistent = false`)
+model it throws a `MethodError`.
+"""
+bpe_tendency(model, z★::ReferenceHeightField) = bpe_tendency(production_parameters(model).diffusivity, model, z★)
+
+function bpe_tendency(::ThermodynamicDiffusivity, model, z★)
+    parcel_tendency = prognostic_reference_tendency(model, z★)
+    # Computing Ṗ★(z★) computes z★, so z★ is passed as its data, and is sorted once
+    return center_operation(bpe_tendencyᶜᶜᶜ, model.grid, z★.data, parcel_tendency.operand.reference_tendency,
+                            parcel_tendency, model.buoyancy.formulation, field_data(model.tracers),
+                            model_tendencies(model), wall_conditions(model))
+end

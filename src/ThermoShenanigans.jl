@@ -13,7 +13,7 @@ export
     ThermodynamicBuoyancy, ThermodynamicDiffusivity, θ_production_forcing, thermodynamic_model_components,
 
     # Thermodynamic diagnostics
-    thermodynamic_operation, internal_energy, viscous_dissipation, θ_production, buoyancy_production,
+    thermodynamic_operation, internal_energy, potential_energy_tendency, viscous_dissipation, θ_production, buoyancy_production,
     heating_buoyancy_production, nonlinear_buoyancy_production, entropy_production, potential_energy_conversion,
     θ_flux, salt_flux, buoyancy_flux, buoyancy_work, buoyancy_tendency, advective_buoyancy_tendency,
 
@@ -23,10 +23,11 @@ export
 
     # Local APE budget
     ape_production, heating_ape_production, nonlinear_ape_production, ape_dissipation, ape_flux, ape_advection,
-    available_buoyancy_work, spurious_ape_production, reference_tendency_work,
+    available_buoyancy_work, spurious_ape_production, reference_tendency_work, ape_tendency,
 
     # Local KE and BPE budgets
-    kinetic_energy, ke_advection, ke_flux, bpe_flux, bpe_advection, spurious_bpe_production
+    kinetic_energy, ke_advection, ke_flux, bpe_flux, bpe_advection, spurious_bpe_production, ke_tendency,
+    bpe_tendency
 
 using DocStringExtensions: TYPEDSIGNATURES
 using KernelAbstractions: @index, @kernel

@@ -58,13 +58,13 @@ diagnostics are:
   `reference_displacement`, `reference_potential`, `reference_buoyancy`, `reference_work`,
   `available_potential_energy`, `background_gravitational_energy`, `ape_production`, `nonlinear_ape_production`,
   `ape_dissipation`, `ape_flux`, `ape_advection`, `available_buoyancy_work`, `spurious_ape_production`,
-  `reference_tendency_work`, `kinetic_energy`, `ke_advection` and `ke_flux`;
+  `reference_tendency_work`, `ape_tendency`, `kinetic_energy`, `ke_advection`, `ke_flux` and `ke_tendency`;
 * supported and identically zero, since the model has no θ source: `θ_production`, `heating_buoyancy_production` and
   `heating_ape_production`;
 * refused, with a `MethodError` when the diagnostic is constructed, since they depend on h⁰ and z₀ or on the consistent
   fluxes: `entropy_production`, `potential_energy_conversion`, `potential_energy(model)`, `internal_energy(model)`,
-  `thermodynamic_operation(model, potential_energy)`, `background_potential_energy`, `bpe_flux`, `bpe_advection` and
-  `spurious_bpe_production`.
+  `thermodynamic_operation(model, potential_energy)`, `background_potential_energy`, `bpe_flux`, `bpe_advection`,
+  `spurious_bpe_production`, `potential_energy_tendency` and `bpe_tendency`.
 
 Only a Fickian `ScalarDiffusivity` with constant κ is supported. For both closures, the diagnostic fluxes carry the wall
 fluxes of every boundary condition the model accepts: `FluxBoundaryCondition`s, and for a Fickian model also

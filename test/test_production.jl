@@ -1,5 +1,7 @@
 using Oceananigans.TurbulenceClosures: ∂ⱼ_τ₁ⱼ, ∂ⱼ_τ₂ⱼ, ∂ⱼ_τ₃ⱼ
-using ThermoShenanigans: flux_contractionᶜᶜᶜ, thermodynamic_functionᶜᶜᶜ, production_parameters
+using ThermoShenanigans: flux_contractionᶜᶜᶜ, thermodynamic_functionᶜᶜᶜ, production_parameters, center_operation,
+                         model_tendencies, wall_conditions, θ_tendencyᶜᶜᶜ, salt_tendencyᶜᶜᶜ,
+                         potential_energy_tendency
 
 function test_production()
     @testset "Irreversible production" begin
@@ -29,12 +31,12 @@ function test_production()
             π, m, σ_θ, ∇_dot_j_θ, ∇_dot_j_S = map(field, (thermodynamic_operation(model, exner), thermodynamic_operation(model, chemical_potential_analogue), σ_θ, flux_divergence(model, 1), flux_divergence(model, 2)))
 
             # ∫ (π ∂ₜθ + m ∂ₜS) dV from the closure and σ_θ must equal ∫ ε dV, the kinetic energy lost to viscosity
-            potential_energy_tendency = integral((π, σ_θ, ∇_dot_j_θ, m, ∇_dot_j_S) -> π * (σ_θ - ∇_dot_j_θ) - m * ∇_dot_j_S,
+            integrated_pe_tendency = integral((π, σ_θ, ∇_dot_j_θ, m, ∇_dot_j_S) -> π * (σ_θ - ∇_dot_j_θ) - m * ∇_dot_j_S,
                                               π, σ_θ, ∇_dot_j_θ, m, ∇_dot_j_S)
             dissipation = integral(viscous_dissipation(model))
             scale = integral((a, b) -> abs(a * b), π, ∇_dot_j_θ)
 
-            @test abs(potential_energy_tendency - dissipation) < 1e-12 * scale
+            @test abs(integrated_pe_tendency - dissipation) < 1e-12 * scale
             @test dissipation > 0
         end
 
@@ -80,6 +82,7 @@ function test_production()
             test_refused(thermodynamic_operation, () -> thermodynamic_operation(model, potential_energy))
             test_refused(potential_energy, () -> potential_energy(model))
             test_refused(internal_energy, () -> internal_energy(model))
+            test_refused(potential_energy_tendency, () -> potential_energy_tendency(model))
         end
 
         #=
@@ -106,6 +109,25 @@ function test_production()
             fickian = fickian_model(grid, thermodynamics)
             set!(fickian; map(field -> Array(interior(field)), model.tracers)...)
             @test computed(gravitational_energy(fickian)) == 𝒢
+        end
+
+        #=
+        ∂ₜθ = G_θ + F_θ and ∂ₜS = G_S + F_S, with F the tendency of the `FluxBoundaryCondition`s, against the Gⁿ to which
+        `compute_flux_bc_tendencies!` adds F: the only direct test of F. A Fickian closure's Value and Gradient wall
+        fluxes are in G already, and not in F.
+        =#
+        @testset "Prognostic tendencies with the wall-flux tendency F [$label]" for (label, build) in
+                (("Flux conditions", flux_bc_model), ("Fickian wall conditions", fickian_wall_model))
+            model = build(grid)
+            set_random_state!(model)
+            tendencies, walls = model_tendencies(model), wall_conditions(model)
+            ∂ₜθ = computed(center_operation(θ_tendencyᶜᶜᶜ, grid, tendencies, walls))
+            ∂ₜS = computed(center_operation(salt_tendencyᶜᶜᶜ, grid, model.buoyancy.formulation, tendencies, walls))
+
+            compute_flux_bc_tendencies!(model)
+            G = model.timestepper.Gⁿ
+            @test ∂ₜθ ≈ Array(interior(G.θ)) rtol = 1e-14
+            @test ∂ₜS ≈ Array(interior(G.S)) rtol = 1e-14
         end
 
         @testset "consistent = false is the standard closure" begin

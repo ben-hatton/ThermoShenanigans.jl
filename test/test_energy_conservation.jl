@@ -30,9 +30,11 @@ function test_energy_conservation()
         @testset "Semi-discrete energy identity [$label]" for (label, thermodynamics, model_kwargs) in cases
             model = component_model(grid, thermodynamics; model_kwargs...)
             set_random_state!(model; S = haskey(model.tracers, :S))
+            diagnosed_dEdt = energy_tendency_diagnostics(model)
             dEdt, round_off, conversions = energy_tendency(model)
             @info "dE/dt = $dEdt for conversions of $conversions [$label]"
             @test abs(dEdt) < 1e-13 * round_off
+            @test abs(diagnosed_dEdt - dEdt) < 1e-13 * round_off
         end
 
         @testset "Semi-discrete energy identity with boundary fluxes" begin
@@ -41,11 +43,13 @@ function test_energy_conservation()
             # (`boundary_cell_value_*`), is the energy input by the wall fluxes
             model = flux_bc_model(grid)
             set_random_state!(model)
+            diagnosed_dEdt = energy_tendency_diagnostics(model)
             dEdt, round_off, _ = energy_tendency(model)
             π_, m = computed(thermodynamic_operation(model, exner)), computed(thermodynamic_operation(model, chemical_potential_analogue))
             wall_pe_input = wall_input(π_, m, grid)
             @info "dE/dt = $dEdt for a wall input of $wall_pe_input [Flux conditions]"
             @test abs(dEdt - wall_pe_input) < 1e-13 * round_off
+            @test abs(diagnosed_dEdt - wall_pe_input) < 1e-13 * round_off
         end
 
         @testset "Default ℑz b would leak energy for cabbeling" begin

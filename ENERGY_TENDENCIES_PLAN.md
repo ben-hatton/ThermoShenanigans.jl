@@ -42,8 +42,9 @@ largest residual and the cell where it occurs.
     they are not included;
   - share R★ between `ape_tendency` and `bpe_tendency`: each builds its own reference tendency, as
     `reference_tendency_work` does.
-- No benchmark: no change here is made for performance. In the final reply, say that the pressure `Field` adds one
-  kernel and one halo fill per computation of `ke_flux` and `ke_tendency`.
+- No benchmark. The `CLAUDE.md` rule covers performance changes, whose results must match to round-off. The pressure
+  `Field` is a correctness change, and it changes the results of `ke_flux` next to a periodic boundary. In the final
+  reply, say that it adds one kernel and one halo fill per computation of `ke_flux` and `ke_tendency`.
 
 ## Facts this plan relies on (checked in Oceananigans 0.116.1)
 
@@ -84,7 +85,7 @@ Here R★[ḃ] is the reference term of `reference_tendency_work`, formed from �
 
 | File | Name | Signature / body |
 |---|---|---|
-| `thermodynamic_diffusivity.jl` | `area_boundary_condition_flux_{x,y,z}` | `(i, j, k, grid, bcs, c, clock, model_fields)` = face area (`Axᶠᶜᶜ`, `Ayᶜᶠᶜ`, `Azᶜᶜᶠ`) × `boundary_condition_flux_{x,y,z}`. Write them as one `@eval` triplet, with the generated names listed in a comment above it. |
+| `thermodynamic_diffusivity.jl` | `area_boundary_condition_flux_{x,y,z}` | `(i, j, k, grid, bcs, c, clock, model_fields)` = face area (`Axᶠᶜᶜ`, `Ayᶜᶠᶜ`, `Azᶜᶜᶠ`) × `boundary_condition_flux_{x,y,z}`. A separate `@eval` loop directly after `boundary_condition_flux_z`, with the generated names listed in a comment above it, written like the `area_buoyancy_flux_{x,y,z}` loop (`ape_budget.jl:158-164`). Do not add them to the large loop of that file. |
 | `diagnostics.jl` | `wall_flux_tendencyᶜᶜᶜ` | `(i, j, k, grid, bcs, c, clock, model_fields)` = −(δxᶜᵃᵃ + δyᵃᶜᵃ + δzᵃᵃᶜ of the area fluxes) / `Vᶜᶜᶜ`. Cite `compute_flux_bcs.jl:113-165`. |
 | `diagnostics.jl` | `model_tendencies(model)` | `field_data(model.timestepper.Gⁿ)` |
 | `diagnostics.jl` | `θ_tendencyᶜᶜᶜ` | `(i, j, k, grid, tendencies, walls)` = `tendencies.θ[i, j, k]` + `wall_flux_tendencyᶜᶜᶜ(…, walls.θ, walls.fields.θ, walls.clock, walls.fields)`. The test helper `θ_tendency(model)` (`utils_for_runtests.jl:265`), which returns G_θ without F, stays as it is. |
@@ -157,8 +158,9 @@ The test commands below follow `CLAUDE.md` (one persistent session, `revise()` b
 - **One-step check for ∂ₜ𝒦**, in `test_ke_budget.jl`. 𝒦 is the only energy without a finite-difference check of its
   budget (𝒜 and ℬ have one, in `test_budgets_close`), and its pressure term needs a real time step.
   1. Build `component_model(test_grid(), cabbeling)` and call `set_random_state!`.
-  2. Take one warm-up `time_step!(model, Δt)` with Δt = 1e-5. It replaces the projection potential that `set!` leaves
-     in `pNHS` with a pressure.
+  2. Take one warm-up `time_step!(model, Δt)` with Δt = 1e-5, so that `pNHS` holds the pressure of a time step and
+     not the projection potential of `set!`. If a test comment explains this, it says only that `pNHS` holds the
+     pressure of the last substep of the warm-up step.
   3. Compute 𝒦 and ∂ₜ𝒦 into arrays, take one more `time_step!(model, Δt)`, and compute 𝒦 again.
   4. Assert max |(𝒦ⁿ⁺¹ − 𝒦ⁿ)/Δt − ∂ₜ𝒦| < 1e-3 max |∂ₜ𝒦|, as in Oceanostics v0.21.7
      `test/test_kinetic_energy_equation.jl:381-415`.
@@ -214,17 +216,29 @@ The test commands below follow `CLAUDE.md` (one persistent session, `revise()` b
   > π − Υ b_θ = π(θ, S, z★) because b does not depend on z; the general form is kept for thermodynamics in which b
   > depends on z.
 
-- **Update `test_budgets_close`.** Next to `ape_tendency_values`, before the moved `compute_flux_bc_tendencies!`, and
-  only when `bpe` is true, compute `bpe_tendency(model, z★)` and `potential_energy_tendency(model)` into arrays. In the
-  `if bpe` block of the assertions, assert that `bpe_tendency` equals `bpe_budget`, with atol = 1e-12 ×
-  `maximum(abs, ∂ₜ𝒫)`. π ≈ cₚ in ∂ₜ𝒫 sets the round-off scale. This ties `bpe_tendency` to the existing finite
-  difference of ℬ.
+- **Update `test_budgets_close`.**
+  - Directly after `ape_tendency_values`, and before the moved lines 12-14, add a separate block:
+
+    ```julia
+    if bpe
+        bpe_tendency_values = computed(bpe_tendency(model, z★))
+        pe_tendency_values = computed(potential_energy_tendency(model))
+    end
+    ```
+  - In the existing `if bpe` block of the assertions (line 52), assert that `bpe_tendency_values` equals `bpe_budget`,
+    with atol = 1e-12 × `maximum(abs, pe_tendency_values)`. π ≈ cₚ in ∂ₜ𝒫 sets the round-off scale. This ties
+    `bpe_tendency` to the existing finite difference of ℬ.
 - **Update the "PE budget splits" testset** (`test_bpe_budget.jl:131-160`).
   - Rename its locals `ape_tendency` and `bpe_tendency` to `ape_budget` and `bpe_budget`, since they would shadow the
     exports. Keep its assertions unchanged.
-  - Before its `compute_flux_bc_tendencies!(model)` (line 139), compute `potential_energy_tendency`, `ape_tendency` and
-    `bpe_tendency` into arrays.
+  - Move `z★ = reference_height(model)` (line 141) up, to just before `compute_flux_bc_tendencies!(model)` (line 139).
+    Between the two, compute `potential_energy_tendency`, `ape_tendency` and `bpe_tendency` into arrays.
   - Assert that ∂ₜ𝒫 ≈ `pe_tendency` (rtol = 1e-12) and that ∂ₜ𝒫 = ∂ₜ𝒜 + ∂ₜℬ, with the atol above.
+- **Refusals.** Add `test_refused(potential_energy_tendency, () -> potential_energy_tendency(model))` to the
+  "Fickian model: zero θ production, and refusals" testset (`test_production.jl:78-82`), and
+  `test_refused(bpe_tendency, () -> bpe_tendency(model, z★))` to "Fickian model refuses the consistent-only
+  diagnostics" (`test_bpe_budget.jl:113-116`). Adding a name to `fickian_refused` only skips it in the loops; these
+  calls check that it throws.
 - Run `run_tests("bpe_budget")`.
 
 ### 7. Lists, exports, documentation and energy conservation

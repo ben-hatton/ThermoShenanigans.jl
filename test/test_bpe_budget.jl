@@ -1,4 +1,5 @@
 using Oceananigans.BuoyancyFormulations: buoyancy_perturbationᶜᶜᶜ
+using ThermoShenanigans: ape_tendency, bpe_tendency, potential_energy_tendency
 
 #=
 ∂𝒜/∂t = Υ σ_b - εₐ - ∇·j_𝒜 - ∇·(u 𝒜) - ℑz[w (b̃ - b★)] + 𝒩 + R★ and, with `bpe = true`,
@@ -9,11 +10,16 @@ function test_budgets_close(model, label; bpe = true)
     grid = model.grid
     update_state!(model)
     compute_tendencies!(model, [])
+
+    z★ = reference_height(model)
+    ape_tendency_values = computed(ape_tendency(model, z★))
+    if bpe
+        bpe_tendency_values = computed(bpe_tendency(model, z★))
+        pe_tendency_values = computed(potential_energy_tendency(model))
+    end
     compute_flux_bc_tendencies!(model)
     G = model.timestepper.Gⁿ
     Gθ, GS = Array(interior(G.θ)), Array(interior(G.S))
-
-    z★ = reference_height(model)
     𝒜 = available_potential_energy(z★)
     R★ = reference_tendency_work(model, z★)
     𝒜₀ = computed(𝒜)
@@ -49,9 +55,12 @@ function test_budgets_close(model, label; bpe = true)
 
     @info "Budgets close [$label] with δt = $δt"
     @test maximum(abs, (𝒜₁ .- 𝒜₀) ./ δt .- budget) < 1e-4 * maximum(abs, budget)
+    @test ape_tendency_values ≈ budget rtol = 1e-8
     if bpe
         ℬ₁ = computed(ℬ)
         @test maximum(abs, (ℬ₁ .- ℬ₀) ./ δt .- bpe_budget) < 1e-4 * maximum(abs, bpe_budget)
+        # π ≈ cₚ in ∂ₜ𝒫 sets the round-off scale of ∂ₜℬ
+        @test bpe_tendency_values ≈ bpe_budget atol = 1e-12 * maximum(abs, pe_tendency_values)
     end
     @test (p★₁ .- p★₀) ./ δt ≈ Ṗ★ rtol = 1e-4
     @test (parcel_p★₁ .- parcel_p★₀) ./ δt ≈ parcel_Ṗ★ rtol = 1e-4
@@ -114,6 +123,7 @@ function test_bpe_budget()
             test_refused(bpe_flux, () -> bpe_flux(model, z★))
             test_refused(bpe_advection, () -> bpe_advection(model, z★))
             test_refused(spurious_bpe_production, () -> spurious_bpe_production(model, z★))
+            test_refused(bpe_tendency, () -> bpe_tendency(model, z★))
         end
 
         @testset "𝒜 + 𝒢★ = - b (z - z₀) in every cell" begin
@@ -136,9 +146,12 @@ function test_bpe_budget()
             set_random_state!(model)
             update_state!(model)
             compute_tendencies!(model, [])
+            z★ = reference_height(model)
+            pe_tendency_values = computed(potential_energy_tendency(model))
+            ape_tendency_values = computed(ape_tendency(model, z★))
+            bpe_tendency_values = computed(bpe_tendency(model, z★))
             compute_flux_bc_tendencies!(model)
             G = model.timestepper.Gⁿ
-            z★ = reference_height(model)
 
             π_, m = computed(thermodynamic_operation(model, exner)), computed(thermodynamic_operation(model, chemical_potential_analogue))
             pe_tendency = π_ .* Array(interior(G.θ)) .+ m .* Array(interior(G.S))
@@ -148,12 +161,15 @@ function test_bpe_budget()
                                                     reference_tendency_work(model, z★), spurious_ape_production(model, z★),
                                                     spurious_bpe_production(model, z★)))
             conversion = center_average(computed(available_buoyancy_work(model, z★)), 3)
-            ape_tendency = σ_𝒜 .- ε_𝒜 .- divergence(ape_flux(model, z★), grid) .+ computed(ape_advection(model, z★)) .-
+            ape_budget = σ_𝒜 .- ε_𝒜 .- divergence(ape_flux(model, z★), grid) .+ computed(ape_advection(model, z★)) .-
                            conversion .+ 𝒩 .+ R★
-            bpe_tendency = .- σ_𝒜 .+ ε_𝒜 .- divergence(bpe_flux(model, z★), grid) .+ computed(bpe_advection(model, z★)) .+
+            bpe_budget = .- σ_𝒜 .+ ε_𝒜 .- divergence(bpe_flux(model, z★), grid) .+ computed(bpe_advection(model, z★)) .+
                            computed(viscous_dissipation(model)) .- R★ .+ 𝒩_ℬ
 
-            @test pe_tendency ≈ ape_tendency .+ bpe_tendency rtol = 1e-12
+            @test pe_tendency ≈ ape_budget .+ bpe_budget rtol = 1e-12
+            @test pe_tendency_values ≈ pe_tendency rtol = 1e-12
+            # π ≈ cₚ in ∂ₜ𝒫 sets the round-off scale
+            @test pe_tendency_values ≈ ape_tendency_values .+ bpe_tendency_values atol = 1e-12 * maximum(abs, pe_tendency_values)
             # The scale of Σ V (𝒩 + 𝒩_ℬ) = Σ V (π ADV_θ + m ADV_S + w b̃) is that of π ADV_θ ≈ cₚ ADV_θ, not of 𝒩
             @test abs(sum((𝒩 .+ 𝒩_ℬ) .* V)) < 1e-13 * round_off
             label == "no flux" && @test zero_at_walls(bpe_flux(model, z★))

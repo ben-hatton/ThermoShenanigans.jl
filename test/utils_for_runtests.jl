@@ -149,7 +149,7 @@ fickian_constant_salinity_model(grid) = fickian_model(grid, cabbeling; tracers =
 # Labels, as in `exported_diagnostics`, of the diagnostics that a Fickian model refuses
 const fickian_refused = ("entropy_production", "potential_energy_conversion", "potential_energy", "internal_energy",
                          "thermodynamic_operation(potential_energy)", "background_potential_energy", "bpe_flux",
-                         "bpe_advection", "spurious_bpe_production")
+                         "bpe_advection", "spurious_bpe_production", "potential_energy_tendency", "bpe_tendency")
 
 # `build()` throws the `MethodError` of the diagnostic `f` on the Fickian `ScalarDiffusivity` of its model
 function test_refused(f, build)
@@ -317,6 +317,10 @@ function energy_tendency(model)
     return kinetic + potential, round_off, conversions
 end
 
+# Σ V (∂ₜ𝒦 + ∂ₜ𝒫) from `ke_tendency` and `potential_energy_tendency`, which read the tendencies Gⁿ that `set!` and
+# `update_state!` leave in `model`: call it before `energy_tendency`, which adds the Flux condition tendencies into Gⁿ
+energy_tendency_diagnostics(model) = integral(+, field(ke_tendency(model)), field(potential_energy_tendency(model)))
+
 # The indices of the cell (3, 3, 3) of `operation`, at index 1 in its reduced (`Nothing`) directions
 cell_indices(operation) = map(L -> L === Nothing ? 1 : 3, location(operation))
 
@@ -352,14 +356,14 @@ end
 const model_diagnostics = (potential_energy, internal_energy, gravitational_energy, viscous_dissipation, θ_production,
                            buoyancy_production, heating_buoyancy_production, nonlinear_buoyancy_production,
                            entropy_production, potential_energy_conversion, buoyancy_work, buoyancy_tendency,
-                           advective_buoyancy_tendency, kinetic_energy, ke_advection)
+                           advective_buoyancy_tendency, kinetic_energy, ke_advection, ke_tendency, potential_energy_tendency)
 const model_fluxes = (θ_flux, salt_flux, buoyancy_flux)
 const reference_state_diagnostics = (reference_displacement, reference_potential, reference_buoyancy, reference_work,
                                      available_potential_energy)
 const reference_diagnostics = (background_potential_energy, background_gravitational_energy, ape_production,
                                heating_ape_production, nonlinear_ape_production, ape_dissipation, ape_advection,
                                available_buoyancy_work, spurious_ape_production, reference_tendency_work, bpe_advection,
-                               spurious_bpe_production)
+                               spurious_bpe_production, ape_tendency, bpe_tendency)
 const reference_fluxes = (ape_flux, ke_flux, bpe_flux)
 
 # The functions named in the docstring of `thermodynamic_operation`, and the internal energy ℐ = h⁰

@@ -360,3 +360,41 @@ function reference_tendency_work(model, z★::ReferenceHeightField)
     # R★ has the form of 𝒲★; computing Ṗ★(z★) computes Ṗ★ at each level
     return center_operation(reference_workᶜᶜᶜ, z★.grid, parcel_tendency.operand.reference_tendency, parcel_tendency)
 end
+
+# Ṗ★(z★) due to the buoyancy tendency ḃ = b_θ ∂ₜθ + b_S ∂ₜS of the model's prognostic tendencies, wall fluxes included
+prognostic_reference_tendency(model, z★) =
+    reference_tendency(z★, prognostic_buoyancy_tendencyᶜᶜᶜ, (model.buoyancy.formulation, field_data(model.tracers),
+                                                             model_tendencies(model), wall_conditions(model)))
+
+#=
+∂ₜ𝒜 = Υ ḃ + R★[ḃ]. ḃ is read from the buffer `buoyancy_tendency` that computing Ṗ★(z★) fills, so that Υ ḃ and R★ use
+the same ḃ, and ḃ is evaluated once per cell.
+=#
+@inline ape_tendencyᶜᶜᶜ(i, j, k, grid, z★, buoyancy_tendency, reference_tendency, parcel_tendency) =
+    @inbounds reference_displacementᶜᶜᶜ(i, j, k, grid, z★) * buoyancy_tendency[i, j, k] +
+              reference_workᶜᶜᶜ(i, j, k, grid, reference_tendency, parcel_tendency)
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the tendency ∂ₜ𝒜 = Υ ḃ + R★[ḃ] of the [`available_potential_energy`](@ref) of `model` at
+(Center, Center, Center), with ḃ = b_θ ∂ₜθ + b_S ∂ₜS the buoyancy tendency of the prognostic tendencies ∂ₜθ = G_θ + F_θ
+and ∂ₜS = G_S + F_S, G the model's tendencies and F the tendencies of the fluxes of its `FluxBoundaryCondition`s, and
+R★[ḃ] the reference term of [`reference_tendency_work`](@ref) formed from ḃ. When σ_θ is the only forcing, in every cell
+
+    ∂𝒜/∂t = Υ σ_b - εₐ - ∇·j_𝒜 - ∇·(u 𝒜) - ℑz[w (b̃ - b★)] + 𝒩 + R★,
+
+exactly when no two cells share a buoyancy, with Υ σ_b the [`ape_production`](@ref), εₐ the
+[`ape_dissipation`](@ref), j_𝒜 the [`ape_flux`](@ref), - ∇·(u 𝒜) the [`ape_advection`](@ref), ℑz[w (b̃ - b★)] the
+[`available_buoyancy_work`](@ref), 𝒩 the [`spurious_ape_production`](@ref) and R★ the
+[`reference_tendency_work`](@ref).
+
+It reads the model's tendencies `Gⁿ`, which `time_step!`, `set!` and `update_state!` compute for the current state; it
+is valid after any of them.
+"""
+function ape_tendency(model, z★::ReferenceHeightField)
+    parcel_tendency = prognostic_reference_tendency(model, z★)
+    # Computing Ṗ★(z★) computes z★, so z★ is passed as its data, and is sorted once
+    return center_operation(ape_tendencyᶜᶜᶜ, model.grid, z★.data, parcel_tendency.operand.buoyancy_tendency,
+                            parcel_tendency.operand.reference_tendency, parcel_tendency)
+end

@@ -132,6 +132,14 @@ flux of the condition on that wall, and zero elsewhere. `inactive_cell` is the t
                   vertical_boundary_flux(bcs.top, Top(), i, j, grid.Nz, grid, c, clock, model_fields),
                   zero(grid)))
 
+# Generated: area_boundary_condition_flux_{x,y,z}, A times the flux of the boundary conditions at the face (i, j, k)
+for (dir, face_area) in ((:x, Axᶠᶜᶜ), (:y, Ayᶜᶠᶜ), (:z, Azᶜᶜᶠ))
+    boundary_condition_flux      = Symbol(:boundary_condition_flux_, dir)
+    area_boundary_condition_flux = Symbol(:area_boundary_condition_flux_, dir)
+    @eval @inline $area_boundary_condition_flux(i, j, k, grid, bcs, c, clock, model_fields) =
+        $face_area(i, j, k, grid) * $boundary_condition_flux(i, j, k, grid, bcs, c, clock, model_fields)
+end
+
 #=
 f in the boundary cell of the face (i, j, k): cell i where cell i - 1 lies outside the domain (face 1 of a wall), and
 cell i - 1 elsewhere, which at face N + 1 of a wall is the boundary cell. The model applies a wall flux to the tendency

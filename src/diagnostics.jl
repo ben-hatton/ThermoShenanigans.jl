@@ -36,6 +36,42 @@ function side_boundary_conditions(field)
 end
 side_boundary_conditions(::Nothing) = nothing
 
+#=
+F, the tendency of a tracer with data c by the fluxes of its `FluxBoundaryCondition`s `bcs`, minus the divergence of the
+wall fluxes, as `compute_flux_bc_tendencies!` adds it to the boundary cell (Oceananigans 0.116.1,
+`src/BoundaryConditions/compute_flux_bcs.jl:113-165`): + A Q / V at the west, south and bottom walls and - A Q / V at the
+east, north and top walls. It is zero away from walls.
+=#
+@inline wall_flux_tendencyᶜᶜᶜ(i, j, k, grid, bcs, c, clock, model_fields) =
+    - (δxᶜᵃᵃ(i, j, k, grid, area_boundary_condition_flux_x, bcs, c, clock, model_fields) +
+       δyᵃᶜᵃ(i, j, k, grid, area_boundary_condition_flux_y, bcs, c, clock, model_fields) +
+       δzᵃᵃᶜ(i, j, k, grid, area_boundary_condition_flux_z, bcs, c, clock, model_fields)) / Vᶜᶜᶜ(i, j, k, grid)
+
+#=
+The model's tendencies Gⁿ, which `update_state!` computes for the current state, as it ends with `compute_tendencies!`
+(Oceananigans 0.116.1, `src/Models/NonhydrostaticModels/update_nonhydrostatic_model_state.jl:60`). They do not
+contain F: the flux of a `FluxBoundaryCondition` is added to Gⁿ only at the start of the next substep
+(`src/Models/NonhydrostaticModels/nonhydrostatic_rk3_substep.jl:35`).
+=#
+model_tendencies(model) = field_data(model.timestepper.Gⁿ)
+
+# ∂ₜθ = G_θ + F_θ, with `walls` = `wall_conditions(model)`
+@inline θ_tendencyᶜᶜᶜ(i, j, k, grid, tendencies, walls) =
+    @inbounds tendencies.θ[i, j, k] + wall_flux_tendencyᶜᶜᶜ(i, j, k, grid, walls.θ, walls.fields.θ, walls.clock, walls.fields)
+
+# ∂ₜS = G_S + F_S, zero for constant salinity
+@inline salt_tendencyᶜᶜᶜ(i, j, k, grid, buoyancy_formulation, tendencies, walls) =
+    @inbounds tendencies.S[i, j, k] + wall_flux_tendencyᶜᶜᶜ(i, j, k, grid, walls.S, walls.fields.S, walls.clock, walls.fields)
+
+@inline salt_tendencyᶜᶜᶜ(i, j, k, grid, ::ConstantSalinityThermodynamicBuoyancy, tendencies, walls) = zero(grid)
+
+# ḃ = b_θ ∂ₜθ + b_S ∂ₜS, the buoyancy tendency of the prognostic tendencies of θ and S
+@inline prognostic_buoyancy_tendencyᶜᶜᶜ(i, j, k, grid, buoyancy_formulation, fields, tendencies, walls) =
+    thermodynamic_functionᶜᶜᶜ(i, j, k, grid, ∂b∂θ, buoyancy_formulation, fields) *
+    θ_tendencyᶜᶜᶜ(i, j, k, grid, tendencies, walls) +
+    thermodynamic_functionᶜᶜᶜ(i, j, k, grid, ∂b∂S, buoyancy_formulation, fields) *
+    salt_tendencyᶜᶜᶜ(i, j, k, grid, buoyancy_formulation, tendencies, walls)
+
 # The parameters of the production terms in `production.jl` for the closure and buoyancy of a model, built as for its
 # θ forcing σ_θ
 production_parameters(model) = production_parameters(model.closure, model.buoyancy.formulation)
@@ -140,6 +176,37 @@ julia> round(𝒫[1, 1, 1], digits = 8) # cₚ₀ (θ - T₀) - g α (θ - T₀)
 potential_energy(model) = potential_energy(production_parameters(model).diffusivity, model)
 
 potential_energy(::ThermodynamicDiffusivity, model) = thermodynamic_function_operation(model, potential_energy)
+
+# ∂ₜ𝒫 = π ∂ₜθ + m ∂ₜS
+@inline potential_energy_tendencyᶜᶜᶜ(i, j, k, grid, buoyancy_formulation, fields, tendencies, walls) =
+    thermodynamic_functionᶜᶜᶜ(i, j, k, grid, exner, buoyancy_formulation, fields) *
+    θ_tendencyᶜᶜᶜ(i, j, k, grid, tendencies, walls) +
+    thermodynamic_functionᶜᶜᶜ(i, j, k, grid, chemical_potential_analogue, buoyancy_formulation, fields) *
+    salt_tendencyᶜᶜᶜ(i, j, k, grid, buoyancy_formulation, tendencies, walls)
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the tendency ∂ₜ𝒫 = π ∂ₜθ + m ∂ₜS of the [`potential_energy`](@ref) of `model` at (Center, Center, Center), with
+∂ₜθ = G_θ + F_θ and ∂ₜS = G_S + F_S, G the model's tendencies and F the tendencies of the fluxes of its
+`FluxBoundaryCondition`s. When σ_θ is the only forcing, in every cell
+
+    ∂𝒫/∂t = π ADV_θ + m ADV_S - ∇·j_𝒫 + ε,    j_𝒫 = ℑπ j_θ + ℑm j_S,
+
+with ADV_θ and ADV_S the tendencies of θ and S by the discrete advection, j_θ and j_S the [`θ_flux`](@ref) and
+[`salt_flux`](@ref), whose wall values give j_𝒫·n = π₁ Q_θ + m₁ Q_S, and ε the [`viscous_dissipation`](@ref).
+
+It reads the model's tendencies `Gⁿ`, which `time_step!`, `set!` and `update_state!` compute for the current state; it
+is valid after any of them.
+
+It needs a consistent model (`consistent = true`), since 𝒫 depends on h⁰ and z₀: for a Fickian (`consistent = false`)
+model it throws a `MethodError`.
+"""
+potential_energy_tendency(model) = potential_energy_tendency(production_parameters(model).diffusivity, model)
+
+potential_energy_tendency(::ThermodynamicDiffusivity, model) =
+    center_operation(potential_energy_tendencyᶜᶜᶜ, model.grid, model.buoyancy.formulation, field_data(model.tracers),
+                     model_tendencies(model), wall_conditions(model))
 
 """
 $(TYPEDSIGNATURES)
