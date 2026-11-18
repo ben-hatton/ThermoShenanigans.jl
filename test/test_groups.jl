@@ -40,6 +40,11 @@ const source_groups = (
     bpe_budget     = (sources = ["bpe_budget.jl"],
                       tests   = ["test_bpe_budget.jl", "test_reference_state.jl", "test_architectures.jl"]),
 
+    # The isopycnal budget of b★, closed by finite differences in the tests of ℬ
+    reference_buoyancy_budget = (sources = ["reference_buoyancy_budget.jl"],
+                                 tests   = ["test_reference_buoyancy_budget.jl", "test_bpe_budget.jl",
+                                            "test_architectures.jl"]),
+
     # σ_θ of `θ_production_forcing`, with the production parameters it shares with the diagnostics, and a user θ forcing
     # combined with σ_θ
     model_components = (sources = ["model_components.jl", "production.jl", "diagnostics.jl"],
@@ -56,12 +61,13 @@ const suite_groups = (
 
     # The reference state and the local energetics, whose sources are all of the groups reference_state and *_budget
     energetics = ["test_reference_state.jl", "test_ape_budget.jl", "test_ke_budget.jl", "test_bpe_budget.jl",
-                  "test_architectures.jl"],
+                  "test_reference_buoyancy_budget.jl", "test_architectures.jl"],
 
     # The full suite, with every test file but `test_basic.jl`, whose tests it repeats for more thermodynamics and grids
     all = ["test_thermodynamics.jl", "test_buoyancy.jl", "test_diffusivity.jl", "test_production.jl",
            "test_energy_conservation.jl", "test_model_components.jl", "test_reference_state.jl", "test_ape_budget.jl",
-           "test_ke_budget.jl", "test_bpe_budget.jl", "test_architectures.jl", "test_doctests_and_imports.jl"])
+           "test_ke_budget.jl", "test_bpe_budget.jl", "test_reference_buoyancy_budget.jl",
+           "test_architectures.jl", "test_doctests_and_imports.jl"])
 
 group_tests(name::Symbol) = haskey(suite_groups, name) ? suite_groups[name] : source_groups[name].tests
 

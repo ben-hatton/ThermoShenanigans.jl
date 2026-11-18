@@ -27,7 +27,11 @@ export
 
     # Local KE and BPE budgets
     kinetic_energy, ke_advection, ke_flux, bpe_flux, bpe_advection, spurious_bpe_production, ke_tendency,
-    bpe_tendency
+    bpe_tendency,
+
+    # Isopycnal budget of the reference buoyancy
+    isopycnal_buoyancy_production, isopycnal_buoyancy_flux_divergence, isopycnal_advective_buoyancy_tendency,
+    isopycnal_wall_buoyancy_flux_divergence, effective_diapycnal_diffusivity, numerical_diapycnal_diffusivity
 
 using DocStringExtensions: TYPEDSIGNATURES
 using KernelAbstractions: @index, @kernel
@@ -37,7 +41,7 @@ using Oceananigans.Architectures: CPU, architecture, on_architecture
 using Oceananigans.BoundaryConditions: BoundaryCondition, Bottom, Flux, Top, explicit_flux, fill_halo_regions!, getbc
 using Oceananigans.Fields: Field, FieldStatus, compute_at!, interior, set_status!
 using Oceananigans.Grids: Center, Face, NegativeZDirection, XYZRegularRG, inactive_cell, znode
-using Oceananigans.Operators: ∂xᶠᶜᶜ, ∂yᶜᶠᶜ, ∂zᶜᶜᶠ, ℑxᶠᵃᵃ, ℑyᵃᶠᵃ, ℑzᵃᵃᶠ, ℑxᶜᵃᵃ, ℑyᵃᶜᵃ, ℑzᵃᵃᶜ,
+using Oceananigans.Operators: ∂xᶠᶜᶜ, ∂yᶜᶠᶜ, ∂zᶜᶜᶠ, ∂zᶜᶜᶜ, ℑxᶠᵃᵃ, ℑyᵃᶠᵃ, ℑzᵃᵃᶠ, ℑxᶜᵃᵃ, ℑyᵃᶜᵃ, ℑzᵃᵃᶜ,
                               ℑxyᶜᶜᵃ, ℑxzᶜᵃᶜ, ℑyzᵃᶜᶜ, δxᶜᵃᵃ, δxᶠᵃᵃ, δyᵃᶜᵃ, δyᵃᶠᵃ, δzᵃᵃᶜ, δzᵃᵃᶠ,
                               Ax_qᶠᶜᶜ, Ay_qᶜᶠᶜ, Az_qᶜᶜᶠ, Axᶜᶜᶜ, Axᶠᶜᶜ, Axᶠᶠᶜ, Axᶠᶜᶠ, Ayᶜᶜᶜ, Ayᶜᶠᶜ, Ayᶠᶠᶜ, Ayᶜᶠᶠ, Azᶜᶜᶜ, Azᶜᶜᶠ, Azᶠᶜᶠ, Azᶜᶠᶠ,
                               Vᶜᶜᶜ, Vᶠᶜᶜ, Vᶜᶠᶜ, Vᶜᶜᶠ, Δzᶜᶜᶜ, Δzᶜᶜᶠ
@@ -71,5 +75,6 @@ include("sorting.jl")
 include("ape_budget.jl")
 include("ke_budget.jl")
 include("bpe_budget.jl")
+include("reference_buoyancy_budget.jl")
 
 end # module
