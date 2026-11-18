@@ -317,10 +317,6 @@ function energy_tendency(model)
     return kinetic + potential, round_off, conversions
 end
 
-# Σ V (∂ₜ𝒦 + ∂ₜ𝒫) from `ke_tendency` and `potential_energy_tendency`, which read the tendencies Gⁿ that `set!` and
-# `update_state!` leave in `model`: call it before `energy_tendency`, which adds the Flux condition tendencies into Gⁿ
-energy_tendency_diagnostics(model) = integral(+, field(ke_tendency(model)), field(potential_energy_tendency(model)))
-
 # The indices of the cell (3, 3, 3) of `operation`, at index 1 in its reduced (`Nothing`) directions
 cell_indices(operation) = map(L -> L === Nothing ? 1 : 3, location(operation))
 

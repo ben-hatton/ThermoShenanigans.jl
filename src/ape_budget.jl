@@ -366,6 +366,8 @@ prognostic_reference_tendency(model, z★) =
     reference_tendency(z★, prognostic_buoyancy_tendencyᶜᶜᶜ, (model.buoyancy.formulation, field_data(model.tracers),
                                                              model_tendencies(model), wall_conditions(model)))
 
+# Oceanostics has no equivalent; its reference term uses a `TimeDerivative`
+# (`src/AvailablePotentialEnergyEquation.jl:467-610`)
 #=
 ∂ₜ𝒜 = Υ ḃ + R★[ḃ]. ḃ is read from the buffer `buoyancy_tendency` that computing Ṗ★(z★) fills, so that Υ ḃ and R★ use
 the same ḃ, and ḃ is evaluated once per cell.

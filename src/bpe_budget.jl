@@ -244,9 +244,10 @@ spurious_bpe_production(::ThermodynamicDiffusivity, model, z★) =
     center_operation(spurious_bpe_productionᶜᶜᶜ, model.grid, z★, bpe_data_operation(z★), z★.operand.reference_buoyancy,
                      model.advection, model.buoyancy.formulation, velocities_and_tracers(model))
 
+# No equivalent in Oceananigans or Oceanostics
 #=
-∂ₜℬ = (π - Υ b_θ) ∂ₜθ + (m - Υ b_S) ∂ₜS - R★[ḃ], with R★[ḃ] from the Ṗ★(z★) of `prognostic_reference_tendency`. π - Υ b_θ
-= π(θ, S, z★) because b does not depend on z; the general form is kept for thermodynamics in which b depends on z.
+π - Υ b_θ = π(θ, S, z★) because b does not depend on z; the general form is kept for thermodynamics in which b depends
+on z.
 =#
 @inline bpe_tendencyᶜᶜᶜ(i, j, k, grid, z★, reference_tendency, parcel_tendency, buoyancy_formulation, fields, tendencies,
                         walls) =

@@ -1,5 +1,4 @@
 using Oceananigans.BuoyancyFormulations: buoyancy_perturbationᶜᶜᶜ
-using ThermoShenanigans: ape_tendency, bpe_tendency, potential_energy_tendency
 
 #=
 ∂𝒜/∂t = Υ σ_b - εₐ - ∇·j_𝒜 - ∇·(u 𝒜) - ℑz[w (b̃ - b★)] + 𝒩 + R★ and, with `bpe = true`,
@@ -55,7 +54,7 @@ function test_budgets_close(model, label; bpe = true)
 
     @info "Budgets close [$label] with δt = $δt"
     @test maximum(abs, (𝒜₁ .- 𝒜₀) ./ δt .- budget) < 1e-4 * maximum(abs, budget)
-    @test ape_tendency_values ≈ budget rtol = 1e-8
+    @test ape_tendency_values ≈ budget rtol = 1e-14
     if bpe
         ℬ₁ = computed(ℬ)
         @test maximum(abs, (ℬ₁ .- ℬ₀) ./ δt .- bpe_budget) < 1e-4 * maximum(abs, bpe_budget)

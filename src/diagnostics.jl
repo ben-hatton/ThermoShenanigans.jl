@@ -51,20 +51,25 @@ east, north and top walls. It is zero away from walls.
 The model's tendencies Gⁿ, which `update_state!` computes for the current state, as it ends with `compute_tendencies!`
 (Oceananigans 0.116.1, `src/Models/NonhydrostaticModels/update_nonhydrostatic_model_state.jl:60`). They do not
 contain F: the flux of a `FluxBoundaryCondition` is added to Gⁿ only at the start of the next substep
-(`src/Models/NonhydrostaticModels/nonhydrostatic_rk3_substep.jl:35`).
+(`src/Models/NonhydrostaticModels/nonhydrostatic_rk3_substep.jl:35`). `time_step!` ends with `update_state!`
+(`src/TimeSteppers/runge_kutta_3.jl:172`) and `set!` projects with Δt = 1
+(`src/Models/NonhydrostaticModels/set_nonhydrostatic_model.jl:63-70`), so Gⁿ holds these tendencies after either.
 =#
 model_tendencies(model) = field_data(model.timestepper.Gⁿ)
 
+# Reads Gⁿ instead of recomputing Oceananigans' `tracer_tendency`
 # ∂ₜθ = G_θ + F_θ, with `walls` = `wall_conditions(model)`
 @inline θ_tendencyᶜᶜᶜ(i, j, k, grid, tendencies, walls) =
     @inbounds tendencies.θ[i, j, k] + wall_flux_tendencyᶜᶜᶜ(i, j, k, grid, walls.θ, walls.fields.θ, walls.clock, walls.fields)
 
+# Reads Gⁿ instead of recomputing Oceananigans' `tracer_tendency`
 # ∂ₜS = G_S + F_S, zero for constant salinity
 @inline salt_tendencyᶜᶜᶜ(i, j, k, grid, buoyancy_formulation, tendencies, walls) =
     @inbounds tendencies.S[i, j, k] + wall_flux_tendencyᶜᶜᶜ(i, j, k, grid, walls.S, walls.fields.S, walls.clock, walls.fields)
 
 @inline salt_tendencyᶜᶜᶜ(i, j, k, grid, ::ConstantSalinityThermodynamicBuoyancy, tendencies, walls) = zero(grid)
 
+# No equivalent in Oceananigans or Oceanostics
 # ḃ = b_θ ∂ₜθ + b_S ∂ₜS, the buoyancy tendency of the prognostic tendencies of θ and S
 @inline prognostic_buoyancy_tendencyᶜᶜᶜ(i, j, k, grid, buoyancy_formulation, fields, tendencies, walls) =
     thermodynamic_functionᶜᶜᶜ(i, j, k, grid, ∂b∂θ, buoyancy_formulation, fields) *
@@ -177,6 +182,7 @@ potential_energy(model) = potential_energy(production_parameters(model).diffusiv
 
 potential_energy(::ThermodynamicDiffusivity, model) = thermodynamic_function_operation(model, potential_energy)
 
+# Counterpart of Oceanostics v0.21.7 `PotentialEnergyTendency` (`src/PotentialEnergyEquation.jl:465`)
 # ∂ₜ𝒫 = π ∂ₜθ + m ∂ₜS
 @inline potential_energy_tendencyᶜᶜᶜ(i, j, k, grid, buoyancy_formulation, fields, tendencies, walls) =
     thermodynamic_functionᶜᶜᶜ(i, j, k, grid, exner, buoyancy_formulation, fields) *

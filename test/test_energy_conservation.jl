@@ -30,7 +30,9 @@ function test_energy_conservation()
         @testset "Semi-discrete energy identity [$label]" for (label, thermodynamics, model_kwargs) in cases
             model = component_model(grid, thermodynamics; model_kwargs...)
             set_random_state!(model; S = haskey(model.tracers, :S))
-            diagnosed_dEdt = energy_tendency_diagnostics(model)
+            # Σ V (∂ₜ𝒦 + ∂ₜ𝒫) from the tendencies Gⁿ that `set!` and `update_state!` leave in `model`; read before
+            # `energy_tendency`, which adds the Flux condition tendencies into Gⁿ
+            diagnosed_dEdt = integral(+, field(ke_tendency(model)), field(potential_energy_tendency(model)))
             dEdt, round_off, conversions = energy_tendency(model)
             @info "dE/dt = $dEdt for conversions of $conversions [$label]"
             @test abs(dEdt) < 1e-13 * round_off
@@ -43,7 +45,9 @@ function test_energy_conservation()
             # (`boundary_cell_value_*`), is the energy input by the wall fluxes
             model = flux_bc_model(grid)
             set_random_state!(model)
-            diagnosed_dEdt = energy_tendency_diagnostics(model)
+            # Σ V (∂ₜ𝒦 + ∂ₜ𝒫) from the tendencies Gⁿ that `set!` and `update_state!` leave in `model`; read before
+            # `energy_tendency`, which adds the Flux condition tendencies into Gⁿ
+            diagnosed_dEdt = integral(+, field(ke_tendency(model)), field(potential_energy_tendency(model)))
             dEdt, round_off, _ = energy_tendency(model)
             π_, m = computed(thermodynamic_operation(model, exner)), computed(thermodynamic_operation(model, chemical_potential_analogue))
             wall_pe_input = wall_input(π_, m, grid)

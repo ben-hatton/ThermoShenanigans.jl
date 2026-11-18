@@ -181,6 +181,7 @@ u ∂ₜu, v ∂ₜv and w ∂ₜw at the velocity points, with ∂ₜ𝐮 = G_�
 @inline w_tendency_workᶜᶜᶠ(i, j, k, grid, velocities, tendencies, nonhydrostatic_pressure) =
     @inbounds velocities.w[i, j, k] * (tendencies.w[i, j, k] - ∂zᶜᶜᶠ(i, j, k, grid, nonhydrostatic_pressure))
 
+# Oceanostics has no equivalent
 # ∂ₜ𝒦 = ℑx(u ∂ₜu) + ℑy(v ∂ₜv) + ℑz(w ∂ₜw)
 @inline ke_tendencyᶜᶜᶜ(i, j, k, grid, velocities, tendencies, nonhydrostatic_pressure) =
     ℑxᶜᵃᵃ(i, j, k, grid, u_tendency_workᶠᶜᶜ, velocities, tendencies, nonhydrostatic_pressure) +

@@ -1,5 +1,4 @@
 using Oceananigans.BoundaryConditions: fill_halo_regions!
-using ThermoShenanigans: ke_tendency
 
 # δp / Δ at the faces of the Bounded direction `dims` of the cell-centred p, zero on the walls
 function face_gradient(p, Δ, dims)

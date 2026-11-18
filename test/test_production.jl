@@ -1,7 +1,6 @@
 using Oceananigans.TurbulenceClosures: ∂ⱼ_τ₁ⱼ, ∂ⱼ_τ₂ⱼ, ∂ⱼ_τ₃ⱼ
 using ThermoShenanigans: flux_contractionᶜᶜᶜ, thermodynamic_functionᶜᶜᶜ, production_parameters, center_operation,
-                         model_tendencies, wall_conditions, θ_tendencyᶜᶜᶜ, salt_tendencyᶜᶜᶜ,
-                         potential_energy_tendency
+                         model_tendencies, wall_conditions, θ_tendencyᶜᶜᶜ, salt_tendencyᶜᶜᶜ
 
 function test_production()
     @testset "Irreversible production" begin
