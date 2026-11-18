@@ -13,3 +13,4 @@
 
 ## Changes
 - Ḃ of reference tendencies through Oceananigans' KernelFunctionOperation + `_compute!` instead of a kernel taking the function (reference_state.jl): reference_tendency_work 163 → 49 ms, 264 → 0.14 MiB allocated per compute (CPU-only: GPU kernels have no dynamic dispatch); 512³: no change in resident memory. Kept.
+- Ḃ★ gathered straight into Ċ, scanned in place, and Ċ held once in z★'s SortingWorkspace, shared by its reference tendencies (sorting.jl): reference_tendency_work 49 → 48 ms (noise); 512³: −2.1 GB per reference tendency, +1.1 GB once (full budget, 9 reference tendencies: 19.3 → 1.1 GB). Kept.
