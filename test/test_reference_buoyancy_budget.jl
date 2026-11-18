@@ -40,7 +40,7 @@ function test_reference_buoyancy_budget()
         @testset "$(nameof(diagnostic))" for (diagnostic, f) in cell_fields
             operation = diagnostic(model, z★)
             field(operation)
-            # `arguments[1]` is the reference tendency passed to `with_reference_state`
+            # `arguments[1]` is the isopycnal integral passed to `with_reference_state`
             isopycnal_integral = interior_data(operation.arguments[1].operand.reference_tendency, Nothing, Nothing, Center, grid)
             @test maximum(abs, f) > 0
             first_moment = sum(V .* z★_values .* f)

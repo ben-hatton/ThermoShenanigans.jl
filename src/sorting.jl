@@ -254,9 +254,15 @@ end
                                                                  band_last[i, j, k], cumulative_tendency, slot_thickness)
 end
 
+# Ṗ★(z★) in each cell, unless only Ṗ★ᶜᶜᶜ is asked for
+compute_parcel_reference_tendency!(::Nothing, workspace, cumulative_tendency) = nothing
+
+compute_parcel_reference_tendency!(parcel_tendency, workspace, cumulative_tendency) =
+    launch!(architecture(parcel_tendency.grid), parcel_tendency.grid, :xyz, _compute_parcel_reference_tendency!,
+            parcel_tendency.data, workspace.band_first, workspace.band_last, cumulative_tendency, workspace.slot_thickness)
+
 function compute_reference_tendency!(parcel_tendency, tendency, ::Sorting)
-    grid = parcel_tendency.grid
-    arch = architecture(grid)
+    grid = tendency.reference_height.grid
     N = prod(size(grid))
     workspace = tendency.reference_height.operand.workspace
     h = workspace.slot_thickness
@@ -268,8 +274,7 @@ function compute_reference_tendency!(parcel_tendency, tendency, ::Sorting)
     Ċ .= view(workspace.flat_values, workspace.permutation)
     cumsum!(Ċ, Ċ)
 
-    launch!(arch, grid, :xyz, _compute_parcel_reference_tendency!, parcel_tendency.data, workspace.band_first,
-            workspace.band_last, Ċ, h)
+    compute_parcel_reference_tendency!(parcel_tendency, workspace, Ċ)
 
     # Ṗ★ᶜᶜᶜ: the mean over each level's slots of Ṗ★ at the slot centres, with the bands of the slots gathered through
     # the permutation

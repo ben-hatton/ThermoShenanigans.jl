@@ -5,10 +5,10 @@ f are
 
     ⟨f⟩(z) = (1/A) ∬_{z★ = z} f |∇z★|⁻¹ dS,      𝓘[f](z) = ∫^z ⟨f⟩ dz′ = (1/A) ∫_{z★ < z} f dV.
 
-Discretely, the reference tendency `reference_tendency(z★, f, arguments)` computes 𝓘[f] at each level into
-`.operand.reference_tendency`, at (Nothing, Nothing, Center): it gathers f in the order of b★, takes its `cumsum!` with
-the slot thickness h = V/A, and averages over the slots of each level (`sorting.jl`). With f the full discrete buoyancy
-tendency Ḃ, it is Ṗ★ = ∂ₜp★.
+Discretely, the `Field` `isopycnal_integral(z★, f, arguments)` (`reference_state.jl`) computes 𝓘[f] at each level,
+at (Nothing, Nothing, Center), as the reference tendency Ṗ★ᶜᶜᶜ of f: it gathers f in the order of b★, takes its
+`cumsum!` with the slot thickness h = V/A, and averages over the slots of each level (`sorting.jl`). With f the full
+discrete buoyancy tendency Ḃ, it is Ṗ★ = ∂ₜp★.
 
 At a given time, the permutation and the bands of tied buoyancies are fixed, so that 𝓘 is linear in f, the
 interpolation within the bands included. For the split
@@ -69,8 +69,8 @@ relates ⟨ADV_b⟩ and K_num to the spurious mixing of the discrete advection.
 @inline isopycnal_averageᶜᶜᶠ(i, j, k, grid, isopycnal_integral) =
     ifelse((k == 1) | (k == size(grid, 3) + 1), zero(grid), ∂zᶜᶜᶠ(1, 1, k, grid, isopycnal_integral))
 
-# Computing the reference tendency of f computes z★ and the isopycnal integral 𝓘[f] at each level, which the
-# operation reads; it is passed through `with_reference_state` so that computing the operation computes it
+# Computing the isopycnal integral of f computes z★ and 𝓘[f] at each level, which the operation reads; it is passed
+# through `with_reference_state` so that computing the operation computes it
 # (`src/AbstractOperations/kernel_function_operation.jl:112`).
 
 """
@@ -93,9 +93,9 @@ It is zero on the boundary faces, where b★ is the buoyancy of the boundary slo
 """
 function isopycnal_buoyancy_production(model, z★::ReferenceHeightField)
     parameters, fields = production_parameters(model), velocities_and_tracers(model)
-    parcel_tendency = reference_tendency(z★, buoyancy_productionᶜᶜᶜ, (model.clock, fields, parameters))
-    return KernelFunctionOperation{Nothing, Nothing, Face}(with_reference_state, model.grid, parcel_tendency,
-                                                          isopycnal_averageᶜᶜᶠ, parcel_tendency.operand.reference_tendency)
+    integral = isopycnal_integral(z★, buoyancy_productionᶜᶜᶜ, (model.clock, fields, parameters))
+    return KernelFunctionOperation{Nothing, Nothing, Face}(with_reference_state, model.grid, integral,
+                                                          isopycnal_averageᶜᶜᶠ, integral.data)
 end
 
 """
@@ -117,11 +117,11 @@ It is zero on the boundary faces, where b★ is the buoyancy of the boundary slo
 """
 function isopycnal_buoyancy_flux_divergence(model, z★::ReferenceHeightField)
     parameters, fields = production_parameters(model), velocities_and_tracers(model)
-    parcel_tendency = reference_tendency(z★, flux_divergenceᶜᶜᶜ, (buoyancy_flux_x, buoyancy_flux_y, buoyancy_flux_z,
-                                                                  parameters.diffusivity, parameters.buoyancy, fields,
-                                                                  wall_conditions(model)))
-    return KernelFunctionOperation{Nothing, Nothing, Face}(with_reference_state, model.grid, parcel_tendency,
-                                                          isopycnal_averageᶜᶜᶠ, parcel_tendency.operand.reference_tendency)
+    integral = isopycnal_integral(z★, flux_divergenceᶜᶜᶜ, (buoyancy_flux_x, buoyancy_flux_y, buoyancy_flux_z,
+                                                           parameters.diffusivity, parameters.buoyancy, fields,
+                                                           wall_conditions(model)))
+    return KernelFunctionOperation{Nothing, Nothing, Face}(with_reference_state, model.grid, integral,
+                                                          isopycnal_averageᶜᶜᶠ, integral.data)
 end
 
 """
@@ -144,9 +144,9 @@ It is zero on the boundary faces, where b★ is the buoyancy of the boundary slo
 """
 function isopycnal_advective_buoyancy_tendency(model, z★::ReferenceHeightField)
     parameters, fields = production_parameters(model), velocities_and_tracers(model)
-    parcel_tendency = reference_tendency(z★, advective_buoyancy_tendencyᶜᶜᶜ, (model.advection, parameters.buoyancy, fields))
-    return KernelFunctionOperation{Nothing, Nothing, Face}(with_reference_state, model.grid, parcel_tendency,
-                                                          isopycnal_averageᶜᶜᶠ, parcel_tendency.operand.reference_tendency)
+    integral = isopycnal_integral(z★, advective_buoyancy_tendencyᶜᶜᶜ, (model.advection, parameters.buoyancy, fields))
+    return KernelFunctionOperation{Nothing, Nothing, Face}(with_reference_state, model.grid, integral,
+                                                          isopycnal_averageᶜᶜᶠ, integral.data)
 end
 
 """
@@ -169,11 +169,11 @@ It is zero on the boundary faces, where b★ is the buoyancy of the boundary slo
 """
 function isopycnal_wall_buoyancy_flux_divergence(model, z★::ReferenceHeightField)
     parameters, fields = production_parameters(model), velocities_and_tracers(model)
-    parcel_tendency = reference_tendency(z★, flux_divergenceᶜᶜᶜ, (wall_buoyancy_flux_x, wall_buoyancy_flux_y,
-                                                                  wall_buoyancy_flux_z, parameters.diffusivity,
-                                                                  parameters.buoyancy, fields, wall_conditions(model)))
-    return KernelFunctionOperation{Nothing, Nothing, Face}(with_reference_state, model.grid, parcel_tendency,
-                                                          isopycnal_averageᶜᶜᶠ, parcel_tendency.operand.reference_tendency)
+    integral = isopycnal_integral(z★, flux_divergenceᶜᶜᶜ, (wall_buoyancy_flux_x, wall_buoyancy_flux_y,
+                                                           wall_buoyancy_flux_z, parameters.diffusivity,
+                                                           parameters.buoyancy, fields, wall_conditions(model)))
+    return KernelFunctionOperation{Nothing, Nothing, Face}(with_reference_state, model.grid, integral,
+                                                          isopycnal_averageᶜᶜᶠ, integral.data)
 end
 
 # K = - F / ∂z b★, the diffusivity of a diapycnal flux F, with ∂z b★ = δz b★ / Δz as in Oceananigans' ∂zᶜᶜᶜ
@@ -203,11 +203,11 @@ It is infinite or NaN where ∂z b★ = 0.
 """
 function effective_diapycnal_diffusivity(model, z★::ReferenceHeightField)
     parameters, fields = production_parameters(model), velocities_and_tracers(model)
-    parcel_tendency = reference_tendency(z★, flux_divergenceᶜᶜᶜ, (closure_buoyancy_flux_x, closure_buoyancy_flux_y,
-                                                                  closure_buoyancy_flux_z, parameters.diffusivity,
-                                                                  parameters.buoyancy, fields))
-    return KernelFunctionOperation{Nothing, Nothing, Center}(with_reference_state, model.grid, parcel_tendency,
-                                                            diapycnal_diffusivityᶜᶜᶜ, parcel_tendency.operand.reference_tendency,
+    integral = isopycnal_integral(z★, flux_divergenceᶜᶜᶜ, (closure_buoyancy_flux_x, closure_buoyancy_flux_y,
+                                                           closure_buoyancy_flux_z, parameters.diffusivity,
+                                                           parameters.buoyancy, fields))
+    return KernelFunctionOperation{Nothing, Nothing, Center}(with_reference_state, model.grid, integral,
+                                                            diapycnal_diffusivityᶜᶜᶜ, integral.data,
                                                             z★.operand.reference_buoyancy)
 end
 
@@ -231,9 +231,9 @@ It is infinite or NaN where ∂z b★ = 0.
 """
 function numerical_diapycnal_diffusivity(model, z★::ReferenceHeightField)
     parameters, fields = production_parameters(model), velocities_and_tracers(model)
-    parcel_tendency = reference_tendency(z★, advective_buoyancy_flux_divergenceᶜᶜᶜ, (model.advection, parameters.buoyancy,
-                                                                                     fields))
-    return KernelFunctionOperation{Nothing, Nothing, Center}(with_reference_state, model.grid, parcel_tendency,
-                                                            diapycnal_diffusivityᶜᶜᶜ, parcel_tendency.operand.reference_tendency,
+    integral = isopycnal_integral(z★, advective_buoyancy_flux_divergenceᶜᶜᶜ, (model.advection, parameters.buoyancy,
+                                                                              fields))
+    return KernelFunctionOperation{Nothing, Nothing, Center}(with_reference_state, model.grid, integral,
+                                                            diapycnal_diffusivityᶜᶜᶜ, integral.data,
                                                             z★.operand.reference_buoyancy)
 end
