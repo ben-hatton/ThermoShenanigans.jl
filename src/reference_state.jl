@@ -112,11 +112,6 @@ one level deep, which keeps the types, and so the compile times, of the diagnost
     @inbounds buoyancy[i, j, k] = buoyancy_perturbationᶜᶜᶜ(i, j, k, grid, buoyancy_formulation, tracers)
 end
 
-@kernel function _compute_buoyancy_tendency!(buoyancy_tendency, grid, buoyancy_tendency_function, arguments)
-    i, j, k = @index(Global, NTuple)
-    @inbounds buoyancy_tendency[i, j, k] = buoyancy_tendency_function(i, j, k, grid, arguments...)
-end
-
 function compute!(profile::ReferenceProfileField, time = nothing)
     compute_at!(profile.operand.reference_height, time)
     set_status!(profile.status, time)
@@ -231,8 +226,13 @@ function compute!(parcel_tendency::ReferenceTendencyField, time = nothing)
     z★ = tendency.reference_height
     compute_at!(z★, time)
     grid = z★.grid
-    launch!(architecture(grid), grid, :xyz, _compute_buoyancy_tendency!, tendency.buoyancy_tendency, grid,
-            tendency.buoyancy_tendency_function, tendency.arguments)
+    # Ḃ is evaluated through a `KernelFunctionOperation` by Oceananigans' `_compute!` kernel (Oceananigans 0.116.1,
+    # src/AbstractOperations/computed_field.jl:102-105), whose operand type holds the type of the kernel function: a
+    # kernel that takes the function itself as an argument is not specialised on it on the CPU, and dispatches
+    # dynamically, with allocations, in every cell
+    operation = KernelFunctionOperation{Center, Center, Center}(tendency.buoyancy_tendency_function, grid,
+                                                                tendency.arguments...)
+    launch!(architecture(grid), grid, :xyz, _compute!, tendency.buoyancy_tendency, operation)
     compute_reference_tendency!(parcel_tendency, tendency, z★.operand.method)
     fill_halo_regions!(parcel_tendency)
     set_status!(parcel_tendency.status, time)
