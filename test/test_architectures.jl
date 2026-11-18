@@ -1,3 +1,5 @@
+using Oceananigans.Fields: compute_at!
+
 # A deterministic state, so that models on different architectures can be compared
 function set_smooth_state!(model)
     U(x, y, z) = 1e-2 * sin(2π * x) * cos(π * y) * cos(π * z)
@@ -17,6 +19,27 @@ end
 # The interior values, on the CPU, of a diagnostic: a Field, or an operation computed into one
 diagnostic_values(field::Field) = Array(interior(compute!(field)))
 diagnostic_values(operation) = diagnostic_values(Field(operation))
+
+#=
+The diagnostics that compute a reference tendency of z★, computed together at one time with one z★, as an output writer
+computes them, against each computed alone. Their reference tendencies share the scratch of the buoyancy tendency Ḃ
+(`ReferenceState`, `reference_state.jl`) and of Ċ (`SortingWorkspace`, `sorting.jl`); `ape_tendency`, which reads its
+Ḃ after computing its reference tendency, has its own.
+=#
+const reference_tendency_diagnostics = (reference_tendency_work, ape_tendency, bpe_tendency, isopycnal_buoyancy_production,
+                                        isopycnal_buoyancy_flux_divergence, isopycnal_advective_buoyancy_tendency,
+                                        isopycnal_wall_buoyancy_flux_divergence, effective_diapycnal_diffusivity,
+                                        numerical_diapycnal_diffusivity)
+
+function test_reference_tendencies_computed_together(model)
+    alone = map(diagnostic -> diagnostic_values(diagnostic(model, reference_height(model))), reference_tendency_diagnostics)
+    z★ = reference_height(model)
+    fields = map(diagnostic -> Field(diagnostic(model, z★)), reference_tendency_diagnostics)
+    foreach(field -> compute_at!(field, 1.0), fields)
+    @testset "$(nameof(diagnostic))" for (diagnostic, field, values) in zip(reference_tendency_diagnostics, fields, alone)
+        @test isapprox(Array(interior(field)), values; nans = true)
+    end
+end
 
 #=
 Models built by `build(grid, thermodynamics; model_kwargs...)` on `arch` and on the CPU in the same random state, each
@@ -111,6 +134,12 @@ function test_architectures()
               "identically zero $zero_labels; refused $(collect(fickian_refused))"
     end
 
+    @testset "Reference tendencies of one z★ computed together [CPU, Float64]" begin
+        model = component_model(test_grid(), cabbeling)
+        set_random_state!(model)
+        test_reference_tendencies_computed_together(model)
+    end
+
     # On GPUs, every exported diagnostic after a time step. On the CPU, the main diagnostics after a time step in Float64, and
     # a few without a time step in Float32, which keeps compilation short; the energetics tests check every diagnostic on
     # the CPU in Float64.
@@ -174,6 +203,11 @@ function test_architectures()
         @testset "GPU Fickian diagnostics match the CPU [$label, Float64]" for
                 (label, build) in (("no flux", fickian_model), ("wall conditions", fickian_wall_model))
             test_architectures_match(comparison_models(GPU(), Float64; build)...; refused = fickian_refused)
+        end
+
+        @testset "GPU reference tendencies of one z★ computed together [Float64]" begin
+            device, _ = comparison_models(GPU(), Float64)
+            test_reference_tendencies_computed_together(device)
         end
 
         # The θ forcing as `MultipleForcings` of a user forcing and σ_θ
