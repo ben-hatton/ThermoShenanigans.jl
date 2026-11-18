@@ -43,8 +43,12 @@ function test_ape_budget()
                                                     spurious_ape_production(model, z★)))
             z★_values = computed(z★)
             @test abs(sum(𝒜_advection .* V)) < 1e-13 * sum(abs.(𝒜_advection) .* V)
-            @test sum(z .* ADV_b .* V) ≈ sum(wb .* Vᶠ) rtol = 1e-10
-            @test sum(𝒩 .* V) ≈ sum(z★_values .* ADV_b .* V) rtol = 1e-8
+            # Both identities assume ∇·u = 0. The pressure solve leaves ∇·u at round-off, and the flux form ∇·(u θ) multiplies
+            # it by θ itself, so the residual is measured against the sum of the absolute values of the terms, not the result
+            @test abs(sum(z .* ADV_b .* V) - sum(wb .* Vᶠ)) <
+                  2e-13 * (sum(abs.(z .* ADV_b) .* V) + sum(abs.(wb) .* Vᶠ))
+            @test abs(sum(𝒩 .* V) - sum(z★_values .* ADV_b .* V)) <
+                  2e-13 * (sum(abs.(𝒩) .* V) + sum(abs.(z★_values .* ADV_b) .* V))
         end
 
         #=
