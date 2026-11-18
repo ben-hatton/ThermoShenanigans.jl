@@ -2,9 +2,9 @@ using Oceananigans.BuoyancyFormulations: buoyancy_perturbationᶜᶜᶜ
 
 #=
 ∂𝒜/∂t = Υ σ_b - εₐ - ∇·j_𝒜 - ∇·(u 𝒜) - ℑz[w (b̃ - b★)] + 𝒩 + R★ and, with `bpe = true`,
-∂ℬ/∂t = - Υ σ_b + εₐ - ∇·j_ℬ - ∇·(u ℬ) + ε - R★ + 𝒩_ℬ in every cell, and ∂p★/∂t = Ṗ★ and ∂ₜb★ = ⟨σ_b⟩ − ⟨∇·j_b⟩ + ⟨ADV_b⟩ = ⟨σ_b⟩ − ⟨∇·j_w⟩ +
-∂z[(K_eff + K_num) ∂z b★] at the interior w-faces, checked by finite differences
-along the model's tendencies of θ and S, which include the tendencies of its FluxBoundaryConditions
+∂ℬ/∂t = - Υ σ_b + εₐ - ∇·j_ℬ - ∇·(u ℬ) + ε - R★ + 𝒩_ℬ in every cell, and ∂p★/∂t = Ṗ★ and ∂ₜb★ = ⟨σ_b⟩ - ⟨∇·j_b⟩ +
+⟨ADV_b⟩ = ⟨σ_b⟩ - ⟨∇·j_w⟩ + ∂z[(K_eff + K_num) ∂z b★] at the interior w-faces, checked by finite differences along the
+model's tendencies of θ and S, which include the tendencies of its FluxBoundaryConditions
 =#
 function test_budgets_close(model, label; bpe = true)
     grid = model.grid

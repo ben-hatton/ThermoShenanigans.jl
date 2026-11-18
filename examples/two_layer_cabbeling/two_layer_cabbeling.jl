@@ -29,7 +29,7 @@ using CairoMakie
 θ_shallow, S_shallow = 273.15 - 1.5, 0.03458 # Θ = -1.5 °C, S = 34.58 g/kg
 
 g, β, γ = 10.0, 0.8, 1e-5
-Δb = g * 0.005 / 1000 # b(shallow) - b(deep), from Δρ = -0.0046 kg m⁻³
+Δb = g * 0.005 / 1000 # b(shallow) - b(deep), from Δρ = -0.005 kg m⁻³
 
 # We choose α so that b(shallow) - b(deep) = Δb,
 

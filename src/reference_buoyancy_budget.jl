@@ -32,9 +32,9 @@ at the w-faces, and the diffusivities K = - F / ∂z b★ of two diapycnal fluxe
 
     K_eff = - 𝓘[∇·j_κ] / ∂z b★,      K_num = - 𝓘[- ADV_b] / ∂z b★ = 𝓘[ADV_b] / ∂z b★.
 
-𝓘[∇·j_κ] is the flux ⟨j_b·∇z★⟩ of the closure's buoyancy flux through the isopycnal z★ = z. For K_num, j is the
+𝓘[∇·j_κ] is the flux ⟨j_κ·∇z★⟩ of the closure's buoyancy flux through the isopycnal z★ = z. For K_num, j is the
 buoyancy flux of the discrete advection, whose divergence is - ADV_b and whose net flux through an isopycnal vanishes
-in the continuum, where ⟨ADV_b⟩ = K_num = 0. K_eff > 0 for down-gradient fluxes: for a Fickian j_b = - κ ∇b with a
+in the continuum, where ⟨ADV_b⟩ = K_num = 0. K_eff > 0 for down-gradient fluxes: for a Fickian j_κ = - κ ∇b with a
 linear equation of state, K_eff = κ ⟨|∇b|²⟩ / (∂z b★)² ≥ κ (Winters & D'Asaro 1996). K_num can be negative, where
 centred advection unmixes (Ilıcak et al. 2012, Ocean Modell. 45-46).
 
@@ -61,12 +61,17 @@ which identifies each diagnostic with its part of Ḃ. With f = ADV_b, Σ V z★
 relates ⟨ADV_b⟩ and K_num to the spurious mixing of the discrete advection.
 =#
 
-# ⟨f⟩ = δz 𝓘[f] / Δz at the interior w-faces, zero on the boundary faces, where `ifelse` discards the halo values read
+# ⟨f⟩ = δz 𝓘[f] / Δz at the interior w-faces, zero on the boundary faces, where `ifelse` discards the halo values read.
+# It is Oceananigans' ∂zᶜᶜᶠ with zero on the boundary faces. A reduced-location operation is computed over the size of
+# its `Field` (`src/AbstractOperations/computed_field.jl:94-104`, `_compute!`) and read through `getindex`
+# (`src/AbstractOperations/kernel_function_operation.jl:96-106`); the halos that the boundary faces read are allocated,
+# so the read is in bounds.
 @inline isopycnal_averageᶜᶜᶠ(i, j, k, grid, isopycnal_integral) =
     ifelse((k == 1) | (k == size(grid, 3) + 1), zero(grid), ∂zᶜᶜᶠ(1, 1, k, grid, isopycnal_integral))
 
 # Computing the reference tendency of f computes z★ and the isopycnal integral 𝓘[f] at each level, which the
-# operation reads; it is passed through `with_reference_state` so that computing the operation computes it.
+# operation reads; it is passed through `with_reference_state` so that computing the operation computes it
+# (`src/AbstractOperations/kernel_function_operation.jl:112`).
 
 """
 $(TYPEDSIGNATURES)
@@ -75,8 +80,8 @@ Return the isopycnal average ⟨σ_b⟩ of the buoyancy production σ_b of `mode
 `KernelFunctionOperation` at (Nothing, Nothing, Face), for the reference height z★ returned by
 [`reference_height`](@ref). The budgets
 
-    ∂ₜb★ = ⟨σ_b⟩ − ⟨∇·j_b⟩ + ⟨ADV_b⟩
-         = ⟨σ_b⟩ − ⟨∇·j_w⟩ + ∂z[(K_eff + K_num) ∂z b★]
+    ∂ₜb★ = ⟨σ_b⟩ - ⟨∇·j_b⟩ + ⟨ADV_b⟩
+         = ⟨σ_b⟩ - ⟨∇·j_w⟩ + ∂z[(K_eff + K_num) ∂z b★]
 
 hold exactly at the interior w-faces when no two cells share a buoyancy, with ⟨σ_b⟩ the
 [`isopycnal_buoyancy_production`](@ref), ⟨∇·j_b⟩ the [`isopycnal_buoyancy_flux_divergence`](@ref), ⟨ADV_b⟩ the
@@ -99,8 +104,8 @@ $(TYPEDSIGNATURES)
 Return the isopycnal average ⟨∇·j_b⟩ of the divergence of the [`buoyancy_flux`](@ref) j_b of `model`, wall fluxes
 included, at the w-faces, as a `KernelFunctionOperation` at (Nothing, Nothing, Face). The budgets
 
-    ∂ₜb★ = ⟨σ_b⟩ − ⟨∇·j_b⟩ + ⟨ADV_b⟩
-         = ⟨σ_b⟩ − ⟨∇·j_w⟩ + ∂z[(K_eff + K_num) ∂z b★]
+    ∂ₜb★ = ⟨σ_b⟩ - ⟨∇·j_b⟩ + ⟨ADV_b⟩
+         = ⟨σ_b⟩ - ⟨∇·j_w⟩ + ∂z[(K_eff + K_num) ∂z b★]
 
 hold exactly at the interior w-faces when no two cells share a buoyancy, with ⟨σ_b⟩ the
 [`isopycnal_buoyancy_production`](@ref), ⟨∇·j_b⟩ the [`isopycnal_buoyancy_flux_divergence`](@ref), ⟨ADV_b⟩ the
@@ -126,8 +131,8 @@ Return the isopycnal average ⟨ADV_b⟩ of the [`advective_buoyancy_tendency`](
 the discrete advection of θ and S, at the w-faces, as a `KernelFunctionOperation` at (Nothing, Nothing, Face).
 ⟨ADV_b⟩ is zero in the continuum, where advection only rearranges the fluid. The budgets
 
-    ∂ₜb★ = ⟨σ_b⟩ − ⟨∇·j_b⟩ + ⟨ADV_b⟩
-         = ⟨σ_b⟩ − ⟨∇·j_w⟩ + ∂z[(K_eff + K_num) ∂z b★]
+    ∂ₜb★ = ⟨σ_b⟩ - ⟨∇·j_b⟩ + ⟨ADV_b⟩
+         = ⟨σ_b⟩ - ⟨∇·j_w⟩ + ∂z[(K_eff + K_num) ∂z b★]
 
 hold exactly at the interior w-faces when no two cells share a buoyancy, with ⟨σ_b⟩ the
 [`isopycnal_buoyancy_production`](@ref), ⟨∇·j_b⟩ the [`isopycnal_buoyancy_flux_divergence`](@ref), ⟨ADV_b⟩ the
@@ -151,8 +156,8 @@ Return the isopycnal average ⟨∇·j_w⟩ of the divergence of the wall part j
 of `model`, with Q_θ and Q_S its wall fluxes of θ and S, nonzero only in boundary cells, at the w-faces, as a
 `KernelFunctionOperation` at (Nothing, Nothing, Face). It is zero for a model without wall fluxes. The budgets
 
-    ∂ₜb★ = ⟨σ_b⟩ − ⟨∇·j_b⟩ + ⟨ADV_b⟩
-         = ⟨σ_b⟩ − ⟨∇·j_w⟩ + ∂z[(K_eff + K_num) ∂z b★]
+    ∂ₜb★ = ⟨σ_b⟩ - ⟨∇·j_b⟩ + ⟨ADV_b⟩
+         = ⟨σ_b⟩ - ⟨∇·j_w⟩ + ∂z[(K_eff + K_num) ∂z b★]
 
 hold exactly at the interior w-faces when no two cells share a buoyancy, with ⟨σ_b⟩ the
 [`isopycnal_buoyancy_production`](@ref), ⟨∇·j_b⟩ the [`isopycnal_buoyancy_flux_divergence`](@ref), ⟨ADV_b⟩ the
@@ -171,20 +176,23 @@ function isopycnal_wall_buoyancy_flux_divergence(model, z★::ReferenceHeightFie
                                                           isopycnal_averageᶜᶜᶠ, parcel_tendency.operand.reference_tendency)
 end
 
-# K = - F / ∂z b★, the diffusivity of a diapycnal flux F, with ∂z b★ = δz b★ / Δz
+# K = - F / ∂z b★, the diffusivity of a diapycnal flux F, with ∂z b★ = δz b★ / Δz as in Oceananigans' ∂zᶜᶜᶜ
+# (`src/Operators/derivative_operators.jl:22`, `src/Operators/difference_operators.jl:13-14`). Oceanostics v0.21.7 has
+# no counterpart.
 @inline diapycnal_diffusivityᶜᶜᶜ(i, j, k, grid, isopycnal_integral, reference_buoyancy) =
     @inbounds - isopycnal_integral[1, 1, k] / ∂zᶜᶜᶜ(1, 1, k, grid, reference_buoyancy)
 
 """
 $(TYPEDSIGNATURES)
 
-Return the effective diapycnal diffusivity K_eff = −⟨j_b·∇z★⟩ / ∂z b★ of `model` at the cell centres, as a
-`KernelFunctionOperation` at (Nothing, Nothing, Center), with ⟨j_b·∇z★⟩ = (1/A) ∫_{z★ < z} ∇·j_b dV the flux of the
-closure's buoyancy flux j_b through the isopycnal z★ = z, and ∂z b★ = δz b★ / Δz. For a Fickian flux j_b = −κ ∇b,
-K_eff = κ ⟨|∇b|²⟩ / (∂z b★)² ≥ κ (Winters & D'Asaro 1996). The budgets
+Return the effective diapycnal diffusivity K_eff = -⟨j_κ·∇z★⟩ / ∂z b★ of `model` at the cell centres, as a
+`KernelFunctionOperation` at (Nothing, Nothing, Center), with ⟨j_κ·∇z★⟩ = (1/A) ∫_{z★ < z} ∇·j_κ dV the flux of the
+closure's buoyancy flux j_κ, zero at the walls, through the isopycnal z★ = z, and ∂z b★ = δz b★ / Δz. For a Fickian
+flux j_κ = -κ ∇b, K_eff = κ ⟨|∇b|²⟩ / (∂z b★)² ≥ κ (Winters & D'Asaro 1996).
+The budgets
 
-    ∂ₜb★ = ⟨σ_b⟩ − ⟨∇·j_b⟩ + ⟨ADV_b⟩
-         = ⟨σ_b⟩ − ⟨∇·j_w⟩ + ∂z[(K_eff + K_num) ∂z b★]
+    ∂ₜb★ = ⟨σ_b⟩ - ⟨∇·j_b⟩ + ⟨ADV_b⟩
+         = ⟨σ_b⟩ - ⟨∇·j_w⟩ + ∂z[(K_eff + K_num) ∂z b★]
 
 hold exactly at the interior w-faces when no two cells share a buoyancy, with ⟨σ_b⟩ the
 [`isopycnal_buoyancy_production`](@ref), ⟨∇·j_b⟩ the [`isopycnal_buoyancy_flux_divergence`](@ref), ⟨ADV_b⟩ the
@@ -211,8 +219,8 @@ as a `KernelFunctionOperation` at (Nothing, Nothing, Center), with ADV_b the [`a
 that ⟨ADV_b⟩ = ∂z(K_num ∂z b★). K_num is zero in the continuum, and negative where the advection unmixes (Ilıcak et al.
 2012). The budgets
 
-    ∂ₜb★ = ⟨σ_b⟩ − ⟨∇·j_b⟩ + ⟨ADV_b⟩
-         = ⟨σ_b⟩ − ⟨∇·j_w⟩ + ∂z[(K_eff + K_num) ∂z b★]
+    ∂ₜb★ = ⟨σ_b⟩ - ⟨∇·j_b⟩ + ⟨ADV_b⟩
+         = ⟨σ_b⟩ - ⟨∇·j_w⟩ + ∂z[(K_eff + K_num) ∂z b★]
 
 hold exactly at the interior w-faces when no two cells share a buoyancy, with ⟨σ_b⟩ the
 [`isopycnal_buoyancy_production`](@ref), ⟨∇·j_b⟩ the [`isopycnal_buoyancy_flux_divergence`](@ref), ⟨ADV_b⟩ the

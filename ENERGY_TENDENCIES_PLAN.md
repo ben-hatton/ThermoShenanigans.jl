@@ -85,7 +85,7 @@ Here R★[ḃ] is the reference term of `reference_tendency_work`, formed from �
 
 | File | Name | Signature / body |
 |---|---|---|
-| `thermodynamic_diffusivity.jl` | `area_boundary_condition_flux_{x,y,z}` | `(i, j, k, grid, bcs, c, clock, model_fields)` = face area (`Axᶠᶜᶜ`, `Ayᶜᶠᶜ`, `Azᶜᶜᶠ`) × `boundary_condition_flux_{x,y,z}`. A separate `@eval` loop directly after `boundary_condition_flux_z`, with the generated names listed in a comment above it, written like the `area_buoyancy_flux_{x,y,z}` loop (`ape_budget.jl:158-164`). Do not add them to the large loop of that file. |
+| `thermodynamic_diffusivity.jl` | `area_boundary_condition_flux_{x,y,z}` | `(i, j, k, grid, bcs, c, clock, model_fields)` = face area (`Axᶠᶜᶜ`, `Ayᶜᶠᶜ`, `Azᶜᶜᶠ`) × `boundary_condition_flux_{x,y,z}`. A separate `@eval` loop directly after `boundary_condition_flux_z`, with the generated names listed in a comment above it, written like `flux_divergenceᶜᶜᶜ` in `src/ape_budget.jl`. Do not add them to the large loop of that file. |
 | `diagnostics.jl` | `wall_flux_tendencyᶜᶜᶜ` | `(i, j, k, grid, bcs, c, clock, model_fields)` = −(δxᶜᵃᵃ + δyᵃᶜᵃ + δzᵃᵃᶜ of the area fluxes) / `Vᶜᶜᶜ`. Cite `compute_flux_bcs.jl:113-165`. |
 | `diagnostics.jl` | `model_tendencies(model)` | `field_data(model.timestepper.Gⁿ)` |
 | `diagnostics.jl` | `θ_tendencyᶜᶜᶜ` | `(i, j, k, grid, tendencies, walls)` = `tendencies.θ[i, j, k]` + `wall_flux_tendencyᶜᶜᶜ(…, walls.θ, walls.fields.θ, walls.clock, walls.fields)`. The test helper `θ_tendency(model)` (`utils_for_runtests.jl:265`), which returns G_θ without F, stays as it is. |
