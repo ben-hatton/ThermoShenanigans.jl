@@ -20,9 +20,10 @@ reference state take the reference height z★ returned by `reference_height(mod
 one computation of the reference state per time.
 =#
 
-# f(i, j, k, grid, args...), with the reference height z★ as an extra argument of its operation, so that computing the
-# operation computes the reference state that `args` read
-@inline with_reference_state(i, j, k, grid, z★, f::F, args...) where F = f(i, j, k, grid, args...)
+# f(i, j, k, grid, args...), with `reference_field` as an extra argument of its operation. It is a `Field` whose
+# computation computes the reference state that `args` read: the reference height z★, or a reference tendency, whose
+# computation computes z★. Computing the operation therefore computes that reference state.
+@inline with_reference_state(i, j, k, grid, reference_field, f::F, args...) where F = f(i, j, k, grid, args...)
 
 # Υ = z★ - z, the displacement of a parcel to its reference height
 @inline reference_displacementᶜᶜᶜ(i, j, k, grid, z★) =
@@ -145,6 +146,10 @@ not included.
       div_Uc(i, j, k, grid, advection.θ, fields, fields.θ) -
     salt_advection_buoyancy_tendencyᶜᶜᶜ(i, j, k, grid, advection, buoyancy_formulation, fields)
 
+# −ADV_b, the divergence of the buoyancy flux of the discrete advection
+@inline advective_buoyancy_flux_divergenceᶜᶜᶜ(i, j, k, grid, advection, buoyancy_formulation, fields) =
+    - advective_buoyancy_tendencyᶜᶜᶜ(i, j, k, grid, advection, buoyancy_formulation, fields)
+
 """
 $(TYPEDSIGNATURES)
 
@@ -155,13 +160,15 @@ advective_buoyancy_tendency(model) =
     center_operation(advective_buoyancy_tendencyᶜᶜᶜ, model.grid, model.advection, model.buoyancy.formulation,
                      velocities_and_tracers(model))
 
-# Generated: area_buoyancy_flux_{x,y,z}, A j_b at faces, with the wall fluxes
-for (dir, face_area) in ((:x, Axᶠᶜᶜ), (:y, Ayᶜᶠᶜ), (:z, Azᶜᶜᶠ))
-    buoyancy_flux_xyz      = Symbol(:buoyancy_flux_, dir)
-    area_buoyancy_flux_xyz = Symbol(:area_buoyancy_flux_, dir)
-    @eval @inline $area_buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls) =
-        $face_area(i, j, k, grid) * $buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls)
-end
+# ∇·j of the face fluxes j_x, j_y and j_z(i, j, k, grid, args...), with Oceananigans' products of a face area and a
+# function, `Ax_qᶠᶜᶜ`, `Ay_qᶜᶠᶜ` and `Az_qᶜᶜᶠ` (Oceananigans.jl v0.116.1,
+# src/Operators/products_between_fields_and_grid_metrics.jl:5-13, used as in src/Operators/laplacian_operators.jl:6):
+# Oceananigans' `divᶜᶜᶜ` (src/Operators/divergence_operators.jl:16-19) for flux kernels that share their arguments,
+# which `divᶜᶜᶜ` cannot take. The type parameters make Julia specialise on the flux functions.
+@inline flux_divergenceᶜᶜᶜ(i, j, k, grid, j_x::X, j_y::Y, j_z::Z, args...) where {X, Y, Z} =
+    (δxᶜᵃᵃ(i, j, k, grid, Ax_qᶠᶜᶜ, j_x, args...) +
+     δyᵃᶜᵃ(i, j, k, grid, Ay_qᶜᶠᶜ, j_y, args...) +
+     δzᵃᵃᶜ(i, j, k, grid, Az_qᶜᶜᶠ, j_z, args...)) / Vᶜᶜᶜ(i, j, k, grid)
 
 #=
 Ḃ = σ_b - ∇·j_b, the non-advective buoyancy tendency, formed here for both closures from the face fluxes j_b of their
@@ -171,9 +178,8 @@ model, whose σ_θ is zero. In a boundary cell, - ∇·j_b includes b_θ₁ F_θ
 =#
 @inline function buoyancy_tendencyᶜᶜᶜ(i, j, k, grid, clock, fields, parameters, walls)
     closure, buoyancy_formulation = parameters.diffusivity, parameters.buoyancy
-    ∇_dot_j_b = (δxᶜᵃᵃ(i, j, k, grid, area_buoyancy_flux_x, closure, buoyancy_formulation, fields, walls) +
-                 δyᵃᶜᵃ(i, j, k, grid, area_buoyancy_flux_y, closure, buoyancy_formulation, fields, walls) +
-                 δzᵃᵃᶜ(i, j, k, grid, area_buoyancy_flux_z, closure, buoyancy_formulation, fields, walls)) / Vᶜᶜᶜ(i, j, k, grid)
+    ∇_dot_j_b = flux_divergenceᶜᶜᶜ(i, j, k, grid, buoyancy_flux_x, buoyancy_flux_y, buoyancy_flux_z,
+                                   closure, buoyancy_formulation, fields, walls)
     return buoyancy_productionᶜᶜᶜ(i, j, k, grid, clock, fields, parameters) - ∇_dot_j_b
 end
 

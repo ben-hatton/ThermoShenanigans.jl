@@ -39,7 +39,7 @@ using Oceananigans.Fields: Field, FieldStatus, compute_at!, interior, set_status
 using Oceananigans.Grids: Center, Face, NegativeZDirection, XYZRegularRG, inactive_cell, znode
 using Oceananigans.Operators: ∂xᶠᶜᶜ, ∂yᶜᶠᶜ, ∂zᶜᶜᶠ, ℑxᶠᵃᵃ, ℑyᵃᶠᵃ, ℑzᵃᵃᶠ, ℑxᶜᵃᵃ, ℑyᵃᶜᵃ, ℑzᵃᵃᶜ,
                               ℑxyᶜᶜᵃ, ℑxzᶜᵃᶜ, ℑyzᵃᶜᶜ, δxᶜᵃᵃ, δxᶠᵃᵃ, δyᵃᶜᵃ, δyᵃᶠᵃ, δzᵃᵃᶜ, δzᵃᵃᶠ,
-                              Axᶜᶜᶜ, Axᶠᶜᶜ, Axᶠᶠᶜ, Axᶠᶜᶠ, Ayᶜᶜᶜ, Ayᶜᶠᶜ, Ayᶠᶠᶜ, Ayᶜᶠᶠ, Azᶜᶜᶜ, Azᶜᶜᶠ, Azᶠᶜᶠ, Azᶜᶠᶠ,
+                              Ax_qᶠᶜᶜ, Ay_qᶜᶠᶜ, Az_qᶜᶜᶠ, Axᶜᶜᶜ, Axᶠᶜᶜ, Axᶠᶠᶜ, Axᶠᶜᶠ, Ayᶜᶜᶜ, Ayᶜᶠᶜ, Ayᶠᶠᶜ, Ayᶜᶠᶠ, Azᶜᶜᶜ, Azᶜᶜᶠ, Azᶠᶜᶠ, Azᶜᶠᶠ,
                               Vᶜᶜᶜ, Vᶠᶜᶜ, Vᶜᶠᶜ, Vᶜᶜᶠ, Δzᶜᶜᶜ, Δzᶜᶜᶠ
 using Oceananigans.AbstractOperations: KernelFunctionOperation
 using Oceananigans.Forcings: Forcing, MultipleForcings
