@@ -71,7 +71,8 @@ Storage of the [`Sorting`](@ref) method, on a sorted column of N = Nx Ny Nz slot
 
 * `flat_values`: N values in linear order: the flattened b or Ḃ of the cells, from which b★ or Ḃ★ is gathered, and
   then Ψ or Ṗ★ at the slot centres, which are averaged over each level
-* `permutation`: the linear indices of the flattened cells, in the order of b★
+* `permutation`: the linear indices of the flattened cells, in the order of b★, as `Int32`, as are the slot indices
+  and the bands, so that N ≤ 2³¹ - 1
 * `slot_indices`: N slot indices in the order of b★: the scratch of the sort on the CPU, and then the first or the
   last slot of the band of each slot
 * `sorted_buoyancy`: b★ on the slots, densest first
@@ -112,8 +113,8 @@ function reference_state_workspace(::Sorting, grid)
     bottom = convert(FT, znode(1, 1, 1, cpu_grid, Center(), Center(), Face()))
     slot_thickness = convert(FT, Δzᶜᶜᶜ(1, 1, 1, cpu_grid) / (Nx * Ny))
 
-    return SortingWorkspace(on_architecture(arch, zeros(FT, N)), on_architecture(arch, zeros(Int, N)),
-                            on_architecture(arch, zeros(Int, N)), on_architecture(arch, zeros(FT, N)),
+    return SortingWorkspace(on_architecture(arch, zeros(FT, N)), on_architecture(arch, zeros(Int32, N)),
+                            on_architecture(arch, zeros(Int32, N)), on_architecture(arch, zeros(FT, N)),
                             on_architecture(arch, zeros(FT, N)), on_architecture(arch, zeros(FT, N)),
                             on_architecture(arch, zeros(Int32, Nx, Ny, Nz)),
                             on_architecture(arch, zeros(Int32, Nx, Ny, Nz)), on_architecture(arch, zeros(FT, 1, Nz)),
