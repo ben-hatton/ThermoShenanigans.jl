@@ -58,7 +58,9 @@ diagnostics are:
   `reference_displacement`, `reference_potential`, `reference_buoyancy`, `reference_work`,
   `available_potential_energy`, `background_gravitational_energy`, `ape_production`, `nonlinear_ape_production`,
   `ape_dissipation`, `ape_flux`, `ape_advection`, `available_buoyancy_work`, `spurious_ape_production`,
-  `reference_tendency_work`, `ape_tendency`, `kinetic_energy`, `ke_advection`, `ke_flux` and `ke_tendency`;
+  `reference_tendency_work`, `ape_tendency`, `kinetic_energy`, `ke_advection`, `ke_flux`, `ke_tendency`,
+  `isopycnal_buoyancy_production`, `isopycnal_buoyancy_flux_divergence`, `isopycnal_advective_buoyancy_tendency`,
+  `isopycnal_wall_buoyancy_flux_divergence`, `effective_diapycnal_diffusivity` and `numerical_diapycnal_diffusivity`;
 * supported and identically zero, since the model has no θ source: `θ_production`, `heating_buoyancy_production` and
   `heating_ape_production`;
 * refused, with a `MethodError` when the diagnostic is constructed, since they depend on h⁰ and z₀ or on the consistent

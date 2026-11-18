@@ -2,7 +2,8 @@ using Oceananigans.BuoyancyFormulations: buoyancy_perturbationᶜᶜᶜ
 
 #=
 ∂𝒜/∂t = Υ σ_b - εₐ - ∇·j_𝒜 - ∇·(u 𝒜) - ℑz[w (b̃ - b★)] + 𝒩 + R★ and, with `bpe = true`,
-∂ℬ/∂t = - Υ σ_b + εₐ - ∇·j_ℬ - ∇·(u ℬ) + ε - R★ + 𝒩_ℬ in every cell, and ∂p★/∂t = Ṗ★, checked by finite differences
+∂ℬ/∂t = - Υ σ_b + εₐ - ∇·j_ℬ - ∇·(u ℬ) + ε - R★ + 𝒩_ℬ in every cell, and ∂p★/∂t = Ṗ★ and ∂ₜb★ = ⟨σ_b⟩ − ⟨∇·j_b⟩ + ⟨ADV_b⟩ = ⟨σ_b⟩ − ⟨∇·j_w⟩ +
+∂z[(K_eff + K_num) ∂z b★] at the interior w-faces, checked by finite differences
 along the model's tendencies of θ and S, which include the tendencies of its FluxBoundaryConditions
 =#
 function test_budgets_close(model, label; bpe = true)
@@ -39,6 +40,17 @@ function test_budgets_close(model, label; bpe = true)
     p★₀, parcel_p★₀ = reference_potentials()
     parcel_Ṗ★ = Array(interior(compute!(parcel_tendency)))
     Ṗ★ = interior_data(parcel_tendency.operand.reference_tendency, Nothing, Nothing, Center, grid)
+    Δz = zspacings(grid, Center())[1]
+    b★₀ = interior_data(state.reference_buoyancy, Nothing, Nothing, Face, grid)
+    ∂zb★ = diff(b★₀, dims = 3) ./ Δz
+    interior_faces(op) = computed(op)[:, :, 2:end-1]
+    σ_b_average = interior_faces(isopycnal_buoyancy_production(model, z★))
+    direct_terms = (σ_b_average, .- interior_faces(isopycnal_buoyancy_flux_divergence(model, z★)),
+                    interior_faces(isopycnal_advective_buoyancy_tendency(model, z★)))
+    K_eff, K_num = computed(effective_diapycnal_diffusivity(model, z★)), computed(numerical_diapycnal_diffusivity(model, z★))
+    split_terms = (σ_b_average, .- interior_faces(isopycnal_wall_buoyancy_flux_divergence(model, z★)),
+                   diff(K_eff .* ∂zb★, dims = 3) ./ Δz, diff(K_num .* ∂zb★, dims = 3) ./ Δz)
+    b★_budget = sum(direct_terms)
 
     # A step short of the first time at which two cells swap order, over which z★ is constant
     b = vec(computed(KernelFunctionOperation{Center, Center, Center}(buoyancy_perturbationᶜᶜᶜ, grid,
@@ -51,6 +63,7 @@ function test_budgets_close(model, label; bpe = true)
     set!(model, θ = θ .+ δt .* Gθ, S = S .+ δt .* GS)
     𝒜₁ = computed(𝒜)
     p★₁, parcel_p★₁ = reference_potentials()
+    b★₁ = interior_data(state.reference_buoyancy, Nothing, Nothing, Face, grid)
 
     @info "Budgets close [$label] with δt = $δt"
     @test maximum(abs, (𝒜₁ .- 𝒜₀) ./ δt .- budget) < 1e-4 * maximum(abs, budget)
@@ -62,6 +75,10 @@ function test_budgets_close(model, label; bpe = true)
         @test bpe_tendency_values ≈ bpe_budget atol = 1e-12 * maximum(abs, pe_tendency_values)
     end
     @test (p★₁ .- p★₀) ./ δt ≈ Ṗ★ rtol = 1e-4
+    scale(terms) = maximum(sum(map(term -> abs.(term), terms)))
+    @test maximum(abs, diff(Ṗ★, dims = 3) ./ Δz .- sum(direct_terms)) < 1e-10 * scale(direct_terms)
+    @test maximum(abs, diff(Ṗ★, dims = 3) ./ Δz .- sum(split_terms)) < 1e-10 * scale(split_terms)
+    @test (b★₁ .- b★₀)[:, :, 2:end-1] ./ δt ≈ b★_budget rtol = 1e-4
     @test (parcel_p★₁ .- parcel_p★₀) ./ δt ≈ parcel_Ṗ★ rtol = 1e-4
 end
 

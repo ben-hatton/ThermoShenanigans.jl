@@ -104,7 +104,9 @@ function test_architectures()
         end
 
         zero_labels = filter(label -> all(iszero, values[label]), first.(supported))
-        @test zero_labels == ["θ_production", "heating_buoyancy_production", "heating_ape_production"]
+        # `isopycnal_wall_buoyancy_flux_divergence` is zero because this model has no wall fluxes, not because it is Fickian
+        @test zero_labels == ["θ_production", "heating_buoyancy_production", "heating_ape_production",
+                              "isopycnal_wall_buoyancy_flux_divergence"]
         @info "Fickian diagnostics: supported $(filter(label -> !(label in zero_labels), first.(supported))); " *
               "identically zero $zero_labels; refused $(collect(fickian_refused))"
     end

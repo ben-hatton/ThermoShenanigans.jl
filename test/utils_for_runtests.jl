@@ -359,7 +359,10 @@ const reference_state_diagnostics = (reference_displacement, reference_potential
 const reference_diagnostics = (background_potential_energy, background_gravitational_energy, ape_production,
                                heating_ape_production, nonlinear_ape_production, ape_dissipation, ape_advection,
                                available_buoyancy_work, spurious_ape_production, reference_tendency_work, bpe_advection,
-                               spurious_bpe_production, ape_tendency, bpe_tendency)
+                               spurious_bpe_production, ape_tendency, bpe_tendency, isopycnal_buoyancy_production,
+                               isopycnal_buoyancy_flux_divergence, isopycnal_advective_buoyancy_tendency,
+                               isopycnal_wall_buoyancy_flux_divergence, effective_diapycnal_diffusivity,
+                               numerical_diapycnal_diffusivity)
 const reference_fluxes = (ape_flux, ke_flux, bpe_flux)
 
 # The functions named in the docstring of `thermodynamic_operation`, and the internal energy ℐ = h⁰
