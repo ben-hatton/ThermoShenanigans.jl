@@ -1,4 +1,4 @@
-using Oceananigans.Fields: compute_at!
+using Oceananigans.OutputWriters: fetch_output
 
 # A deterministic state, so that models on different architectures can be compared
 function set_smooth_state!(model)
@@ -16,28 +16,56 @@ function architecture_model(arch, FT = Float64; step = true)
     return model
 end
 
+# Bytes allocated by `compute!` of `field`, after a first `compute!` that compiles it
+function compute_allocations(field)
+    compute!(field)
+    return @allocated compute!(field)
+end
+
 # The interior values, on the CPU, of a diagnostic: a Field, or an operation computed into one
 diagnostic_values(field::Field) = Array(interior(compute!(field)))
 diagnostic_values(operation) = diagnostic_values(Field(operation))
 
 #=
-The diagnostics that compute a reference tendency of z★, computed together at one time with one z★, as an output writer
-computes them, against each computed alone. Their reference tendencies share the scratch of the buoyancy tendency Ḃ
-(`ReferenceState`, `reference_state.jl`) and of Ċ (`SortingWorkspace`, `sorting.jl`); `ape_tendency`, which reads its
-Ḃ after computing its reference tendency, has its own.
+Every exported diagnostic of `model`, all built on one z★, as Fields computed in the order `order`: with `compute!`, or
+with Oceananigans' `fetch_output`, which an output writer calls at each output and which `compute_at!`s each Field at the
+model's time, skipping a Field already computed at that time (`src/OutputWriters/fetch_output.jl:14`). The reference
+tendencies of z★ share the scratch of the buoyancy tendency Ḃ (`ReferenceState`, `reference_state.jl`) and of Ċ
+(`SortingWorkspace`, `sorting.jl`), each consumed within the `compute!` of the reference tendency that fills it.
 =#
-const reference_tendency_diagnostics = (reference_tendency_work, ape_tendency, bpe_tendency, isopycnal_buoyancy_production,
-                                        isopycnal_buoyancy_flux_divergence, isopycnal_advective_buoyancy_tendency,
-                                        isopycnal_wall_buoyancy_flux_divergence, effective_diapycnal_diffusivity,
-                                        numerical_diapycnal_diffusivity)
+function values_in_order(model, order; output_writer)
+    fields = map(diagnostic -> diagnostic isa Field ? diagnostic : Field(diagnostic), last.(exported_diagnostics(model)))
+    for n in order
+        output_writer ? fetch_output(fields[n], model) : compute!(fields[n])
+    end
+    return map(field -> Array(interior(field)), fields)
+end
 
-function test_reference_tendencies_computed_together(model)
-    alone = map(diagnostic -> diagnostic_values(diagnostic(model, reference_height(model))), reference_tendency_diagnostics)
-    z★ = reference_height(model)
-    fields = map(diagnostic -> Field(diagnostic(model, z★)), reference_tendency_diagnostics)
-    foreach(field -> compute_at!(field, 1.0), fields)
-    @testset "$(nameof(diagnostic))" for (diagnostic, field, values) in zip(reference_tendency_diagnostics, fields, alone)
-        @test isapprox(Array(interior(field)), values; nans = true)
+#=
+The values of every diagnostic built on one z★, computed in two orders, directly and through an output writer, must be
+identical. `ape_tendency` reads its Ḃ after its reference tendency is computed, so that its Ḃ is its own: computed
+inside one operation with `reference_tendency_work`, whose reference tendency is computed after that of ∂ₜ𝒜 and
+before the operation's kernel reads Ḃ, it must be unchanged. `model` must have a nonzero time, at which `compute_at!`
+skips a Field already computed.
+=#
+function test_order_independence(model)
+    labels = first.(exported_diagnostics(model))
+    forward = values_in_order(model, eachindex(labels); output_writer = false)
+    computations = ("reverse order" => (reverse(eachindex(labels)), false),
+                    "output writer" => (eachindex(labels), true),
+                    "output writer, reverse order" => (reverse(eachindex(labels)), true))
+
+    @testset "$name" for (name, (order, output_writer)) in computations
+        values = values_in_order(model, order; output_writer)
+        @testset "$label" for (label, forward_values, other_values) in zip(labels, forward, values)
+            @test isequal(other_values, forward_values)
+        end
+    end
+
+    @testset "ape_tendency and reference_tendency_work in one operation" begin
+        z★ = reference_height(model)
+        ∂ₜ𝒜, R★ = ape_tendency(model, z★), reference_tendency_work(model, z★)
+        @test isequal(diagnostic_values(∂ₜ𝒜 + R★), diagnostic_values(∂ₜ𝒜) .+ diagnostic_values(R★))
     end
 end
 
@@ -47,12 +75,12 @@ after one time step. The smooth state is symmetric in y, so that pairs of cells 
 and the round-off differences of the two architectures could order them differently in the sorted reference state. No
 two cells of a random state are that close in buoyancy, so the reference states of the two architectures agree.
 =#
-function comparison_models(arch, FT; build = component_model, model_kwargs...)
-    cpu = build(architecture_grid(CPU(), FT), architecture_thermodynamics(FT); model_kwargs...)
+function comparison_models(arch, FT; build = component_model, size = (4, 4, 4), model_kwargs...)
+    cpu = build(architecture_grid(CPU(), FT; size), architecture_thermodynamics(FT); model_kwargs...)
     set_random_state!(cpu)
     values = map(field -> Array(interior(field)), merge(cpu.velocities, cpu.tracers))
 
-    device = build(architecture_grid(arch, FT), architecture_thermodynamics(FT); model_kwargs...)
+    device = build(architecture_grid(arch, FT; size), architecture_thermodynamics(FT); model_kwargs...)
     set!(device; values...)
 
     for model in (device, cpu)
@@ -134,10 +162,31 @@ function test_architectures()
               "identically zero $zero_labels; refused $(collect(fickian_refused))"
     end
 
-    @testset "Reference tendencies of one z★ computed together [CPU, Float64]" begin
+    @testset "Diagnostics of one z★ computed in different orders [CPU, Float64]" begin
         model = component_model(test_grid(), cabbeling)
         set_random_state!(model)
-        test_reference_tendencies_computed_together(model)
+        time_step!(model, 1e-3)
+        test_order_independence(model)
+    end
+
+    #=
+    `compute!` of the Field of every exported diagnostic, on two grids of the shared test type: its allocations must not
+    grow with the grid by a byte or more per added cell. The per-cell allocation tests of the energetics evaluate
+    the operation in one cell, and so miss a `compute!` that allocates in every cell, as a kernel that is not
+    specialised on its kernel function does on the CPU.
+    =#
+    @testset "compute! allocates independently of the grid size [CPU, Float64]" begin
+        sizes = ((4, 4, 4), (8, 8, 8))
+        allocations = map(sizes) do size
+            model = component_model(test_grid(; size), cabbeling)
+            set_random_state!(model)
+            map(((label, diagnostic),) -> label => compute_allocations(diagnostic isa Field ? diagnostic : Field(diagnostic)),
+                exported_diagnostics(model))
+        end
+        added_cells = prod(last(sizes)) - prod(first(sizes))
+        @testset "$label" for ((label, small), (_, large)) in zip(allocations...)
+            @test large - small < added_cells
+        end
     end
 
     # On GPUs, every exported diagnostic after a time step. On the CPU, the main diagnostics after a time step in Float64, and
@@ -205,9 +254,26 @@ function test_architectures()
             test_architectures_match(comparison_models(GPU(), Float64; build)...; refused = fickian_refused)
         end
 
-        @testset "GPU reference tendencies of one z★ computed together [Float64]" begin
+        @testset "GPU diagnostics of one z★ computed in different orders [Float64]" begin
             device, _ = comparison_models(GPU(), Float64)
-            test_reference_tendencies_computed_together(device)
+            test_order_independence(device)
+        end
+
+        #=
+        32³ rather than the 4³ of the other comparisons: with N = 32768 values, CUDA's `sortperm!`, the in-place
+        `cumsum!(Ċ, Ċ)` and the other scans and reductions of `sorting.jl` run on several thread blocks, which the
+        smaller grids do not reach
+        =#
+        @testset "GPU reference state of a 32³ grid matches the CPU [Float64]" begin
+            device, cpu = comparison_models(GPU(), Float64; size = (32, 32, 32))
+            diagnostics = ("reference_height" => (model, z★) -> z★,
+                           "reference_work" => (model, z★) -> reference_work(z★),
+                           "reference_tendency_work" => reference_tendency_work,
+                           "effective_diapycnal_diffusivity" => effective_diapycnal_diffusivity)
+            @testset "$label" for (label, diagnostic) in diagnostics
+                device_values, cpu_values = map(model -> diagnostic_values(diagnostic(model, reference_height(model))), (device, cpu))
+                @test isapprox(device_values, cpu_values; nans = true)
+            end
         end
 
         # The θ forcing as `MultipleForcings` of a user forcing and σ_θ

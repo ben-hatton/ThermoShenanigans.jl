@@ -137,7 +137,7 @@ function translated_models(; shift = 10)
 end
 
 # On the CPU in Float64 these have the types of the other test models, so time stepping compiles only once
-architecture_grid(arch, FT) = RectilinearGrid(arch, FT, size = (4, 4, 4), extent = (1, 1, 1), topology = (Bounded, Bounded, Bounded))
+architecture_grid(arch, FT; size = (4, 4, 4)) = RectilinearGrid(arch, FT; size, extent = (1, 1, 1), topology = (Bounded, Bounded, Bounded))
 architecture_thermodynamics(FT) = CabbelingBoussinesqThermodynamics(FT; cabbeling_coefficient = 1e-5, parameters...)
 
 # The Fickian ScalarDiffusivity(ν, κ) of consistent = false is the closure under test: a model type of its own
