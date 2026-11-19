@@ -1,6 +1,7 @@
 #!/bin/bash
-# Batch job that runs benchmark/benchmark.jl on a GPU, then the full test suite (TEST_GROUP=all) with
-# TEST_ARCHITECTURE=GPU, which compares every exported diagnostic between the GPU and the CPU (test/test_architectures.jl).
+# Batch job that runs benchmark/benchmark.jl and benchmark/gpu_registers.jl on a GPU, then the full test suite
+# (TEST_GROUP=all) with TEST_ARCHITECTURE=GPU, which compares every exported diagnostic between the GPU and the CPU
+# (test/test_architectures.jl).
 # Edit the lines marked EDIT for your cluster, then submit with `sbatch gpu.slurm`.
 #
 # Both run in the environment benchmark/Project.toml, which holds CUDA and the test dependencies, so that the job needs
@@ -9,8 +10,8 @@
 #   julia --project=$REPO/benchmark -e 'using CUDA'   # in a new session, which fetches the CUDA runtime it now selects
 #
 # The tests run as `julia test/runtests.jl` in that environment rather than through `Pkg.test`, whose fresh test
-# environment would have to download CUDA. Results to report back: the benchmark table and the test summary at the end
-# of the output file.
+# environment would have to download CUDA. Results to report back: the benchmark table, the register table and the test
+# summary at the end of the output file.
 
 #SBATCH --job-name=thermoshenanigans-gpu
 #SBATCH --partition=gpu          # EDIT: your GPU partition
@@ -39,9 +40,13 @@ echo "=== Benchmark ==="
 julia --project=benchmark benchmark/benchmark.jl GPU
 benchmark_status=$?
 
+echo "=== Registers and occupancy ==="
+julia --project=benchmark benchmark/gpu_registers.jl
+registers_status=$?
+
 echo "=== Tests (TEST_ARCHITECTURE=GPU, TEST_GROUP=all) ==="
 TEST_ARCHITECTURE=GPU TEST_GROUP=all julia --project=benchmark test/runtests.jl
 test_status=$?
 
-echo "Benchmark exit status: $benchmark_status, test exit status: $test_status"
-exit $(( benchmark_status != 0 || test_status != 0 ))
+echo "Benchmark exit status: $benchmark_status, registers exit status: $registers_status, test exit status: $test_status"
+exit $(( benchmark_status != 0 || registers_status != 0 || test_status != 0 ))
