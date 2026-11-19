@@ -116,8 +116,8 @@ julia> fickian_components = thermodynamic_model_components(grid, thermodynamics;
 
 julia> fickian = NonhydrostaticModel(grid; tracers = (:θ, :S), fickian_components...);
 
-julia> try entropy_production(fickian) catch exception; (typeof(exception), exception.f) end
-(MethodError, entropy_production)
+julia> try entropy_production(fickian) catch exception; (typeof(exception), nameof(exception.f)) end
+(MethodError, :entropy_production)
 ```
 """
 function thermodynamic_model_components(grid, thermodynamics; viscosity, thermal_diffusivity, salt_diffusivity,
