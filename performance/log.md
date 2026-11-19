@@ -1,5 +1,21 @@
 # Performance log (branch `performance`)
 
+## Summary
+- Ḃ of the reference tendencies through Oceananigans' `KernelFunctionOperation` + `_compute!` (a CPU-only dynamic
+  dispatch removed): `reference_tendency_work` 175 → 38 ms at 64³ (4.6×), 1317 → 276 ms at 128³ (4.8×), 264 → 0.14 MiB per compute.
+- One Ḃ and one Ċ per z★ shared by its reference tendencies (∂ₜ𝒜 keeps its own Ḃ), the b★-budget integrals as level
+  Fields without Ṗ★(z★), an `Int32` permutation: z★ and the nine reference-tendency diagnostics 39 → 6.6 GB at 512³.
+  Budget output of 67 diagnostics at 64³: 8.6 s, 21.4 GB allocated → 0.33 s, 2.7 MiB. Values bit-identical to `main`.
+- Tests: the diagnostics of one z★ agree bit for bit in two orders, with `compute!` and through `fetch_output`;
+  `compute!` of every diagnostic allocates the same at 4³ and 8³; GPU tests at 32³ and in two orders (not yet run).
+- Decisions (below): R★ keeps its own Ḃ, independent of Gⁿ; ⟨ADV_b⟩ and K_num keep separate passes; closure fields
+  deferred. CPU `time_step!` consistent / Fickian = 3.4× at 64³, 2.3× at 128³: above 1.5×, so the CPU criterion is met.
+- Cluster: `sbatch benchmark/gpu.slurm` on `performance` (benchmark, `gpu_registers.jl`, `TEST_ARCHITECTURE=GPU
+  TEST_GROUP=all`), then on `main`: `git checkout main && julia --project=benchmark benchmark/benchmark.jl GPU`.
+  - Benchmark: `reference_height` / `reference_tendency_work` near 1 means the sort dominates z★ and R★ on the GPU.
+  - `gpu_registers.jl`: more registers and a lower occupancy for the consistent θ tendency kernel than the Fickian
+    one means it is register-bound; that or the CPU ratio above decides for prototyping closure fields.
+
 ## Result: benchmark/benchmark.jl, CPU (14 cores, 8 threads), Julia 1.11.5, 5 trials, minimum (median)
 
 | grid | operation | start (0661d5a) | branch | |
@@ -30,14 +46,30 @@ specialise on for the CPU, so every face flux was a dynamic dispatch. GPU kernel
 the GPU should see the memory savings and the passes removed (one 3D kernel and halo fill per b★ diagnostic), not the
 4.6×. Values are bit-identical to the start at 16³ (67 diagnostics, fresh processes, FFTW.ESTIMATE plans).
 
-## For Ben
-- R★ from Gⁿ: the Ḃ kernel of R★ is now its largest run-time part (~13 ms of the 18 ms tendency step at 64³) and its
-  largest compile (3.5 s, the heaviest kernel of the budget); reading Gⁿ would remove both.
-- Closure fields for cₚ/π, T_S/T_θ, Γ_S: σ_θ is 12 % of time_step!, and ~10 budget kernels at 11-14 ms each
-  re-evaluate these at both cells of every face. Within a kernel the compiler already shares repeated evaluations
-  (j_S upper-bound test below); storage would only save work across kernels, at 1.1 GB per coefficient at 512³.
-- Public API: ⟨ADV_b⟩ and K_num each integrate ±ADV_b in their own reference tendency; 𝓘[-ADV_b] = -𝓘[ADV_b] exactly,
-  so sharing one would save a 3D kernel pass, a gather, a scan and a sum per output, but needs a shared argument.
+## Decisions
+1. R★ keeps its independent Ḃ = ADV_b + σ_b − ∇·j_b; it is not computed from the model's tendencies Gⁿ. R★ is a term
+   of a budget that is checked for closure, so it must not depend on the Gⁿ that ∂ₜ𝒜 (`ape_tendency`) reads, or the
+   closure check partly checks Gⁿ against itself; `ape_tendency` already gives the Gⁿ-based tendency. The docstring
+   of `reference_tendency_work` states this. (The Ḃ kernel of R★ is ~13 ms of the 18 ms tendency step at 64³ and its
+   heaviest compile, 3.5 s.)
+2. ⟨ADV_b⟩ and K_num keep separate passes. Sharing their integral (𝓘[-ADV_b] = -𝓘[ADV_b] exactly) saves one 3D kernel
+   pass, a gather, a scan and a sum per output, but needs a public API change or hidden caching, either of which costs
+   more readability than the pass costs time.
+3. Closure fields for the cell-centre thermodynamic coefficients (cₚ/π, T_S/T_θ, Γ_S) are deferred, not rejected. They
+   are worth prototyping only if the consistent model's `time_step!` is more than 1.5× the Fickian model's on the CPU,
+   or the GPU register counts show the θ tendency kernel is register-bound.
+   CPU evidence (`benchmark/benchmark.jl CPU 5`, 8 threads, first call / minimum / median of 5):
+
+   | grid | consistent | Fickian | ratio (min / median) |
+   |---|---|---|---|
+   | 64³ | 833 ms / 63.6 ms / 68.5 ms | 266 ms / 18.4 ms / 22.5 ms | 3.45 / 3.05 |
+   | 128³ | 1.62 s / 513 ms / 534 ms | 479 ms / 225 ms / 231 ms | 2.28 / 2.31 |
+
+   **The CPU criterion is met** (> 1.5× at both sizes). The ratio is the whole cost of consistency (b̃ in the w
+   equation, the `ThermodynamicDiffusivity` fluxes, σ_θ), of which re-evaluating the coefficients is a part: σ_θ alone
+   was 12 % of the step in the baseline profile. The GPU evidence comes from `benchmark/gpu_registers.jl`. These
+   absolute times are lower than the table above (64³ `time_step!` 64 vs 119 ms), from a different machine state;
+   the ratio is taken within one run.
 
 ## Baseline (commit 0661d5a, CPU 14 cores, 8 threads, Julia 1.11.5, 64³, 5 trials, min of runs 1 / 2)
 - time_step! 115 / 121 ms (1.1 MiB); reference_height 14 / 30 ms; reference_tendency_work 163 / 155 ms (264 MiB);
@@ -64,11 +96,13 @@ the GPU should see the memory savings and the passes removed (one 3D kernel and 
   `Tuple(generator)` compiles in proportion to the argument types (0.32 s for a small KFO, 0.69 s for a b★ one).
 
 ## Jean Zay checklist (benchmark/gpu.slurm)
-- [ ] Run gpu.slurm on `performance` (benchmark + `TEST_ARCHITECTURE=GPU TEST_GROUP=all`), then the benchmark alone
+- [ ] Run gpu.slurm on `performance` (benchmark, `gpu_registers.jl` and `TEST_ARCHITECTURE=GPU TEST_GROUP=all`), then the benchmark alone
       on `main` (`git checkout main && julia --project=benchmark benchmark/benchmark.jl GPU`) for the comparison.
 - [ ] Report the test summary, in particular: `reference_height`, `reference_tendency_work`, `ape_tendency`,
-      `bpe_tendency` and the six isopycnal testsets of `GPU diagnostics match the CPU`, and the new
-      `GPU reference tendencies of one z★ computed together [Float64]`.
+      `bpe_tendency` and the six isopycnal testsets of `GPU diagnostics match the CPU`,
+      `GPU diagnostics of one z★ computed in different orders [Float64]` and
+      `GPU reference state of a 32³ grid matches the CPU [Float64]`.
+- [ ] Report the register table of `gpu_registers.jl` (θ tendency, consistent and Fickian; the two R★ kernels).
 - [ ] Memory: at 256³ and 512³, `CUDA.memory_status()` after building z★ and the nine reference-tendency diagnostics
       (`exported_diagnostics` of test/utils_for_runtests.jl), on `main` and on `performance`.
 - Kept changes the GPU could overturn:

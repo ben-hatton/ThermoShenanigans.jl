@@ -359,7 +359,9 @@ Return the reference term R★ = Ṗ★(z) - Ṗ★(z★) of the APE budget of `
 tendency of the reference potential due to the buoyancy tendency Ḃ = ADV_b + σ_b - ∇·j_b of `model`, including its
 discrete advection ADV_b, which leaves the reference state unchanged only in the continuum, and the wall fluxes of θ
 and S in j_b, which change the buoyancy of the boundary cells and so the reference state at every level above their
-reference heights. R★ integrates to zero.
+reference heights. R★ integrates to zero. Ḃ is evaluated from the model's state, not read from its tendencies Gⁿ, so
+that R★, a term of the APE budget, is independent of the ∂ₜ𝒜 of [`ape_tendency`](@ref), formed from Gⁿ, which the
+budget is checked against.
 """
 function reference_tendency_work(model, z★::ReferenceHeightField)
     parcel_tendency = reference_tendency(model, z★)
