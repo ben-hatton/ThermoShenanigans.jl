@@ -31,7 +31,7 @@ julia> summary(model.forcing.θ)
 "MultipleForcings with 2 forcings"
 ```
 """
-θ_production_forcing(closure, buoyancy_formulation) =
+θ_production_forcing(closure::Tuple, buoyancy_formulation) =
     Forcing(θ_productionᶜᶜᶜ; discrete_form = true, parameters = production_parameters(closure, buoyancy_formulation))
 
 """
@@ -44,7 +44,33 @@ With `consistent = true` the closure is `(ScalarDiffusivity(ν = viscosity), The
 conserved. With `consistent = false` it is the standard
 `ScalarDiffusivity(ν = viscosity, κ = (θ = thermal_diffusivity, S = salt_diffusivity))` with no σ_θ.
 σ_θ evaluates ε without closure fields, so `viscosity` must not need any. Energy is conserved exactly with
-Oceananigans' default `Centered(order = 2)` advection. Wall fluxes of θ and S are set only by `FluxBoundaryCondition`s.
+Oceananigans' default `Centered(order = 2)` advection. With `consistent = true`, wall fluxes of θ and S are set only by
+`FluxBoundaryCondition`s.
+
+The dynamics of a Fickian (`consistent = false`) model never use the internal energy h⁰ or the reference pressure
+height z₀, so that of the potential-type energies only the gravitational energy 𝒢, the available potential energy 𝒜 and
+the background gravitational energy 𝒢★ are defined for it, with z₀ only setting the origin of z in 𝒢 and 𝒢★. Its
+diagnostics are:
+
+* supported: `thermodynamic_operation` (of every function but `potential_energy`), `viscous_dissipation`,
+  `buoyancy_production`, `nonlinear_buoyancy_production`, `θ_flux`, `salt_flux`, `buoyancy_flux`, `buoyancy_work`,
+  `buoyancy_tendency`, `advective_buoyancy_tendency`, `gravitational_energy`, `reference_height`,
+  `reference_displacement`, `reference_potential`, `reference_buoyancy`, `reference_work`,
+  `available_potential_energy`, `background_gravitational_energy`, `ape_production`, `nonlinear_ape_production`,
+  `ape_dissipation`, `ape_flux`, `ape_advection`, `available_buoyancy_work`, `spurious_ape_production`,
+  `reference_tendency_work`, `ape_tendency`, `kinetic_energy`, `ke_advection`, `ke_flux`, `ke_tendency`,
+  `isopycnal_buoyancy_production`, `isopycnal_buoyancy_flux_divergence`, `isopycnal_advective_buoyancy_tendency`,
+  `isopycnal_wall_buoyancy_flux_divergence`, `effective_diapycnal_diffusivity` and `numerical_diapycnal_diffusivity`;
+* supported and identically zero, since the model has no θ source: `θ_production`, `heating_buoyancy_production` and
+  `heating_ape_production`;
+* refused, with a `MethodError` when the diagnostic is constructed, since they depend on h⁰ and z₀ or on the consistent
+  fluxes: `entropy_production`, `potential_energy_conversion`, `potential_energy(model)`, `internal_energy(model)`,
+  `thermodynamic_operation(model, potential_energy)`, `background_potential_energy`, `bpe_flux`, `bpe_advection`,
+  `spurious_bpe_production`, `potential_energy_tendency` and `bpe_tendency`.
+
+Only a Fickian `ScalarDiffusivity` with constant κ is supported. For both closures, the diagnostic fluxes carry the wall
+fluxes of every boundary condition the model accepts: `FluxBoundaryCondition`s, and for a Fickian model also
+`ValueBoundaryCondition`s and `GradientBoundaryCondition`s, whose wall fluxes its closure carries.
 
 A model is built in either of two ways:
 
@@ -83,6 +109,15 @@ julia> model = NonhydrostaticModel(grid; tracers = (:θ, :S), components...);
 
 julia> summary(model.forcing.θ)
 "MultipleForcings with 2 forcings"
+
+julia> fickian_components = thermodynamic_model_components(grid, thermodynamics; viscosity = 1e-6,
+                                                           thermal_diffusivity = 1e-7, salt_diffusivity = 1e-9,
+                                                           consistent = false);
+
+julia> fickian = NonhydrostaticModel(grid; tracers = (:θ, :S), fickian_components...);
+
+julia> try entropy_production(fickian) catch exception; (typeof(exception), nameof(exception.f)) end
+(MethodError, :entropy_production)
 ```
 """
 function thermodynamic_model_components(grid, thermodynamics; viscosity, thermal_diffusivity, salt_diffusivity,

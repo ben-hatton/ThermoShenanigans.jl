@@ -1,3 +1,5 @@
+using Oceananigans.OutputWriters: fetch_output
+
 # A deterministic state, so that models on different architectures can be compared
 function set_smooth_state!(model)
     U(x, y, z) = 1e-2 * sin(2π * x) * cos(π * y) * cos(π * z)
@@ -7,10 +9,6 @@ function set_smooth_state!(model)
     return nothing
 end
 
-# On the CPU in Float64 these have the types of the other test models, so time stepping compiles only once
-architecture_grid(arch, FT) = RectilinearGrid(arch, FT, size = (4, 4, 4), extent = (1, 1, 1), topology = (Bounded, Bounded, Bounded))
-architecture_thermodynamics(FT) = CabbelingBoussinesqThermodynamics(FT; cabbeling_coefficient = 1e-5, parameters...)
-
 function architecture_model(arch, FT = Float64; step = true)
     model = component_model(architecture_grid(arch, FT), architecture_thermodynamics(FT))
     set_smooth_state!(model)
@@ -18,59 +16,10 @@ function architecture_model(arch, FT = Float64; step = true)
     return model
 end
 
-#####
-##### Every exported diagnostic, for the comparison of architectures
-#####
-
-# Grouped by their arguments: the model, the reference height z★, or both. Face fluxes return their (x, y, z) components.
-const model_diagnostics = (viscous_dissipation, θ_production, buoyancy_production, heating_buoyancy_production,
-                           nonlinear_buoyancy_production, entropy_production, potential_energy_conversion, buoyancy_work,
-                           buoyancy_tendency, advective_buoyancy_tendency, kinetic_energy, ke_advection)
-const model_fluxes = (θ_flux, salt_flux, buoyancy_flux)
-const reference_state_diagnostics = (reference_displacement, reference_potential, reference_buoyancy, reference_work,
-                                     available_potential_energy)
-const reference_diagnostics = (background_potential_energy, background_gravitational_energy, ape_production,
-                               heating_ape_production, nonlinear_ape_production, ape_dissipation, ape_advection,
-                               available_buoyancy_work, spurious_ape_production, reference_tendency_work, bpe_advection,
-                               spurious_bpe_production)
-const reference_fluxes = (ape_flux, ke_flux, bpe_flux)
-
-# The functions named in the docstring of `thermodynamic_operation`, and the internal energy ℐ = h⁰
-const operation_functions = (potential_energy, temperature, exner, chemical_potential_analogue, chemical_potential,
-                             potential_enthalpy)
-
-function_label(f) = string(nameof(f))
-
-# `label => diagnostic` for every exported diagnostic of `model`, with one z★ shared by those of the reference state
-function exported_diagnostics(model)
-    z★ = reference_height(model)
-    diagnostics = Pair{String, Any}["reference_height" => z★]
-
-    for f in operation_functions
-        push!(diagnostics, "thermodynamic_operation($(function_label(f)))" => thermodynamic_operation(model, f))
-    end
-
-    for diagnostic in model_diagnostics
-        push!(diagnostics, function_label(diagnostic) => diagnostic(model))
-    end
-
-    for diagnostic in reference_state_diagnostics
-        push!(diagnostics, function_label(diagnostic) => diagnostic(z★))
-    end
-
-    for diagnostic in reference_diagnostics
-        push!(diagnostics, function_label(diagnostic) => diagnostic(model, z★))
-    end
-
-    for flux in model_fluxes, (component, operation) in pairs(flux(model))
-        push!(diagnostics, "$(function_label(flux)).$component" => operation)
-    end
-
-    for flux in reference_fluxes, (component, operation) in pairs(flux(model, z★))
-        push!(diagnostics, "$(function_label(flux)).$component" => operation)
-    end
-
-    return diagnostics
+# Bytes allocated by `compute!` of `field`, after a first `compute!` that compiles it
+function compute_allocations(field)
+    compute!(field)
+    return @allocated compute!(field)
 end
 
 # The interior values, on the CPU, of a diagnostic: a Field, or an operation computed into one
@@ -78,17 +27,60 @@ diagnostic_values(field::Field) = Array(interior(compute!(field)))
 diagnostic_values(operation) = diagnostic_values(Field(operation))
 
 #=
-Models on `arch` and on the CPU in the same random state, each after one time step. The smooth state is symmetric in
-y, so that pairs of cells share a buoyancy to within round-off, and the round-off differences of the two
-architectures could order them differently in the sorted reference state. No two cells of a random state are that
-close in buoyancy, so the reference states of the two architectures agree.
+Every exported diagnostic of `model`, all built on one z★, as Fields computed in the order `order`: with `compute!`, or
+with Oceananigans' `fetch_output`, which an output writer calls at each output and which `compute_at!`s each Field at the
+model's time, skipping a Field already computed at that time (`src/OutputWriters/fetch_output.jl:14`). The reference
+tendencies of z★ share the scratch of the buoyancy tendency Ḃ (`ReferenceState`, `reference_state.jl`) and of Ċ
+(`SortingWorkspace`, `sorting.jl`), each consumed within the `compute!` of the reference tendency that fills it.
 =#
-function comparison_models(arch, FT; model_kwargs...)
-    cpu = component_model(architecture_grid(CPU(), FT), architecture_thermodynamics(FT); model_kwargs...)
+function values_in_order(model, order; output_writer)
+    fields = map(diagnostic -> diagnostic isa Field ? diagnostic : Field(diagnostic), last.(exported_diagnostics(model)))
+    for n in order
+        output_writer ? fetch_output(fields[n], model) : compute!(fields[n])
+    end
+    return map(field -> Array(interior(field)), fields)
+end
+
+#=
+The values of every diagnostic built on one z★, computed in two orders, directly and through an output writer, must be
+identical. `ape_tendency` reads its Ḃ after its reference tendency is computed, so that its Ḃ is its own: computed
+inside one operation with `reference_tendency_work`, whose reference tendency is computed after that of ∂ₜ𝒜 and
+before the operation's kernel reads Ḃ, it must be unchanged. `model` must have a nonzero time, at which `compute_at!`
+skips a Field already computed.
+=#
+function test_order_independence(model)
+    labels = first.(exported_diagnostics(model))
+    forward = values_in_order(model, eachindex(labels); output_writer = false)
+    computations = ("reverse order" => (reverse(eachindex(labels)), false),
+                    "output writer" => (eachindex(labels), true),
+                    "output writer, reverse order" => (reverse(eachindex(labels)), true))
+
+    @testset "$name" for (name, (order, output_writer)) in computations
+        values = values_in_order(model, order; output_writer)
+        @testset "$label" for (label, forward_values, other_values) in zip(labels, forward, values)
+            @test isequal(other_values, forward_values)
+        end
+    end
+
+    @testset "ape_tendency and reference_tendency_work in one operation" begin
+        z★ = reference_height(model)
+        ∂ₜ𝒜, R★ = ape_tendency(model, z★), reference_tendency_work(model, z★)
+        @test isequal(diagnostic_values(∂ₜ𝒜 + R★), diagnostic_values(∂ₜ𝒜) .+ diagnostic_values(R★))
+    end
+end
+
+#=
+Models built by `build(grid, thermodynamics; model_kwargs...)` on `arch` and on the CPU in the same random state, each
+after one time step. The smooth state is symmetric in y, so that pairs of cells share a buoyancy to within round-off,
+and the round-off differences of the two architectures could order them differently in the sorted reference state. No
+two cells of a random state are that close in buoyancy, so the reference states of the two architectures agree.
+=#
+function comparison_models(arch, FT; build = component_model, size = (4, 4, 4), model_kwargs...)
+    cpu = build(architecture_grid(CPU(), FT; size), architecture_thermodynamics(FT); model_kwargs...)
     set_random_state!(cpu)
     values = map(field -> Array(interior(field)), merge(cpu.velocities, cpu.tracers))
 
-    device = component_model(architecture_grid(arch, FT), architecture_thermodynamics(FT); model_kwargs...)
+    device = build(architecture_grid(arch, FT; size), architecture_thermodynamics(FT); model_kwargs...)
     set!(device; values...)
 
     for model in (device, cpu)
@@ -98,21 +90,23 @@ function comparison_models(arch, FT; model_kwargs...)
     return device, cpu
 end
 
-# The prognostic fields and every exported diagnostic of `device` against those of `cpu`, one testset per diagnostic
-function test_architectures_match(device, cpu)
+# The prognostic fields and every exported diagnostic of `device` against those of `cpu`, one testset per diagnostic,
+# but those labelled in `refused`
+function test_architectures_match(device, cpu; refused = ())
     device_fields, cpu_fields = merge(device.velocities, device.tracers), merge(cpu.velocities, cpu.tracers)
     @testset "$name" for name in keys(cpu_fields)
         @test Array(interior(device_fields[name])) ≈ interior(cpu_fields[name])
     end
 
-    device_diagnostics, cpu_diagnostics = exported_diagnostics(device), exported_diagnostics(cpu)
+    device_diagnostics, cpu_diagnostics = exported_diagnostics(device; refused), exported_diagnostics(cpu; refused)
     @test first.(device_diagnostics) == first.(cpu_diagnostics)
     cpu_values = Dict(label => diagnostic_values(diagnostic) for (label, diagnostic) in cpu_diagnostics)
 
     # 𝒩_ℬ is a small residual of terms the size of ∇·(u ℬ) ≈ cₚ ∇·(u θ), so that differences of a few ulps in the state
-    # change it by about 10⁻⁷ of itself; its tolerance is set by the round-off of those terms instead
+    # change it by about 10⁻⁷ of itself; its tolerance is set by the round-off of those terms instead. Both are absent
+    # for a Fickian model.
     root_sum_of_squares(values) = sqrt(sum(abs2, values))
-    round_off_scales = Dict("spurious_bpe_production" => root_sum_of_squares(cpu_values["bpe_advection"]))
+    round_off_scales = Dict("spurious_bpe_production" => root_sum_of_squares(get(cpu_values, "bpe_advection", Float64[])))
 
     @testset "$label" for (label, device_diagnostic) in device_diagnostics
         atol = sqrt(eps(Float64)) * get(round_off_scales, label, 0.0)
@@ -122,10 +116,11 @@ end
 
 function test_architectures()
     @testset "Every exported diagnostic is compared between architectures" begin
-        # Exported names that are not diagnostics: types, thermodynamic functions f(θ, S, z, thermodynamics), and the
-        # constructors of the model components and of the θ forcing σ_θ
+        # Exported names that are not diagnostics: types, thermodynamic functions f(θ, S, z, thermodynamics) without a
+        # method f(model) (`potential_energy` has both), and the constructors of the model components and of the θ forcing σ_θ
         thermodynamics_type = typeof(cabbeling)
-        is_thermodynamic_function(f) = hasmethod(f, Tuple{Float64, Float64, Float64, thermodynamics_type})
+        is_thermodynamic_function(f) = hasmethod(f, Tuple{Float64, Float64, Float64, thermodynamics_type}) &&
+                                       !hasmethod(f, Tuple{NonhydrostaticModel})
         exported = filter(name -> name != :ThermoShenanigans, names(ThermoShenanigans))
         exported_values = map(name -> getproperty(ThermoShenanigans, name), exported)
         is_diagnostic = map(value -> !(value isa Type || value in (thermodynamic_model_components, θ_production_forcing) ||
@@ -134,6 +129,64 @@ function test_architectures()
         compared = (reference_height, thermodynamic_operation, model_diagnostics..., model_fluxes...,
                     reference_state_diagnostics..., reference_diagnostics..., reference_fluxes...)
         @test Set(exported[is_diagnostic]) == Set(nameof.(compared))
+    end
+
+    #=
+    The status of every exported diagnostic for a Fickian (`consistent = false`) model: supported, supported and
+    identically zero, or refused with a `MethodError`. This testset defines the list in the docstring of
+    `thermodynamic_model_components`.
+    =#
+    @testset "Fickian status of every exported diagnostic" begin
+        consistent = architecture_model(CPU())
+        fickian = fickian_model(architecture_grid(CPU(), Float64), architecture_thermodynamics(Float64))
+        set_smooth_state!(fickian)
+        time_step!(fickian, 1e-3)
+
+        # The label of a diagnostic, or of the face flux of which it is a component
+        flux_label(label) = first(split(label, '.'))
+        consistent_labels = first.(exported_diagnostics(consistent))
+        supported = exported_diagnostics(fickian; refused = fickian_refused)
+        @test issubset(fickian_refused, flux_label.(consistent_labels))
+        @test first.(supported) == filter(label -> !(flux_label(label) in fickian_refused), consistent_labels)
+
+        values = Dict(label => diagnostic_values(diagnostic) for (label, diagnostic) in supported)
+        @testset "$label" for (label, _) in supported
+            @test all(isfinite, values[label])
+        end
+
+        zero_labels = filter(label -> all(iszero, values[label]), first.(supported))
+        # `isopycnal_wall_buoyancy_flux_divergence` is zero because this model has no wall fluxes, not because it is Fickian
+        @test zero_labels == ["θ_production", "heating_buoyancy_production", "heating_ape_production",
+                              "isopycnal_wall_buoyancy_flux_divergence"]
+        @info "Fickian diagnostics: supported $(filter(label -> !(label in zero_labels), first.(supported))); " *
+              "identically zero $zero_labels; refused $(collect(fickian_refused))"
+    end
+
+    @testset "Diagnostics of one z★ computed in different orders [CPU, Float64]" begin
+        model = component_model(test_grid(), cabbeling)
+        set_random_state!(model)
+        time_step!(model, 1e-3)
+        test_order_independence(model)
+    end
+
+    #=
+    `compute!` of the Field of every exported diagnostic, on two grids of the shared test type: its allocations must not
+    grow with the grid by a byte or more per added cell. The per-cell allocation tests of the energetics evaluate
+    the operation in one cell, and so miss a `compute!` that allocates in every cell, as a kernel that is not
+    specialised on its kernel function does on the CPU.
+    =#
+    @testset "compute! allocates independently of the grid size [CPU, Float64]" begin
+        sizes = ((4, 4, 4), (8, 8, 8))
+        allocations = map(sizes) do size
+            model = component_model(test_grid(; size), cabbeling)
+            set_random_state!(model)
+            map(((label, diagnostic),) -> label => compute_allocations(diagnostic isa Field ? diagnostic : Field(diagnostic)),
+                exported_diagnostics(model))
+        end
+        added_cells = prod(last(sizes)) - prod(first(sizes))
+        @testset "$label" for ((label, small), (_, large)) in zip(allocations...)
+            @test large - small < added_cells
+        end
     end
 
     # On GPUs, every exported diagnostic after a time step. On the CPU, the main diagnostics after a time step in Float64, and
@@ -178,8 +231,49 @@ function test_architectures()
     round-off, which differs between architectures. The Float32 diagnostics on the GPU are checked to be finite above.
     =#
     if test_gpu
-        @testset "GPU diagnostics match the CPU [Float64]" begin
-            test_architectures_match(comparison_models(GPU(), Float64)...)
+        #=
+        With Flux conditions (`flux_bc_model`, tracers θ, S and c): a time step with the conditions on the device, the
+        zero flux of the passive tracer c (`tracer_flux_*(…, ::Val, …)`), and the wall fluxes of the diagnostics, from
+        `wall_conditions(model)` adapted to the device: `lateral_boundary_flux` (`getbc`) on the x walls,
+        `vertical_boundary_flux` (`explicit_flux`) on the bottom and top, `boundary_condition_flux_*`,
+        `boundary_cell_value_*`, and the wall values of j_θ, j_S, j_b, j_𝒜, j_ℬ, Ḃ and R★
+        =#
+        @testset "GPU diagnostics match the CPU [$label, Float64]" for
+                (label, build) in (("no flux", component_model), ("Flux conditions", flux_bc_model))
+            test_architectures_match(comparison_models(GPU(), Float64; build)...)
+        end
+
+        #=
+        The Fickian fluxes of Oceananigans' `diffusive_flux_*` through the wall masks, the zero σ_θ, and every
+        diagnostic that a Fickian model supports. With wall conditions (`fickian_wall_model`), the closure's own wall
+        flux of a Value and a Gradient condition (`closure_wall_flux_*`, through `x/y/z_peripheral_node`), added to the
+        wall fluxes of Flux conditions on the x walls
+        =#
+        @testset "GPU Fickian diagnostics match the CPU [$label, Float64]" for
+                (label, build) in (("no flux", fickian_model), ("wall conditions", fickian_wall_model))
+            test_architectures_match(comparison_models(GPU(), Float64; build)...; refused = fickian_refused)
+        end
+
+        @testset "GPU diagnostics of one z★ computed in different orders [Float64]" begin
+            device, _ = comparison_models(GPU(), Float64)
+            test_order_independence(device)
+        end
+
+        #=
+        32³ rather than the 4³ of the other comparisons: with N = 32768 values, CUDA's `sortperm!`, the in-place
+        `cumsum!(Ċ, Ċ)` and the other scans and reductions of `sorting.jl` run on several thread blocks, which the
+        smaller grids do not reach
+        =#
+        @testset "GPU reference state of a 32³ grid matches the CPU [Float64]" begin
+            device, cpu = comparison_models(GPU(), Float64; size = (32, 32, 32))
+            diagnostics = ("reference_height" => (model, z★) -> z★,
+                           "reference_work" => (model, z★) -> reference_work(z★),
+                           "reference_tendency_work" => reference_tendency_work,
+                           "effective_diapycnal_diffusivity" => effective_diapycnal_diffusivity)
+            @testset "$label" for (label, diagnostic) in diagnostics
+                device_values, cpu_values = map(model -> diagnostic_values(diagnostic(model, reference_height(model))), (device, cpu))
+                @test isapprox(device_values, cpu_values; nans = true)
+            end
         end
 
         # The θ forcing as `MultipleForcings` of a user forcing and σ_θ

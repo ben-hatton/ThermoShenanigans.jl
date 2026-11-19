@@ -32,11 +32,11 @@ uniform level has z★ = z and 𝒜 = 0.
 At the model's w-faces, the reference buoyancy is b★ᶜᶜᶠ = δz p★ᶜᶜᶜ / Δz, the discrete gradient of p★ᶜᶜᶜ.
 With discrete continuity this makes ∇·(p★ u) = ℑz(w b★ᶜᶜᶠ) hold exactly in every cell.
 
-The tendency of the reference state follows from the buoyancy tendencies Ḃ of the cells, gathered through the
-permutation of the reference state into Ḃ★, in the order of b★. Since P★[n] is h times the sum of the n - 1 lowest
-buoyancies, its tendency is h Ċ[n - 1], with Ċ[n] = Σ_{m≤n} Ḃ★[m]. Ċ at the ends of a band of tied slots does not
-depend on the order of the tied cells, and within a band Ṗ★ is interpolated linearly between its ends, which averages
-over the tied cells. Then
+The tendency of the reference state follows from the buoyancy tendencies Ḃ of the cells, wall fluxes of θ and S
+included, gathered through the permutation of the reference state into Ḃ★, in the order of b★. Since P★[n] is h times
+the sum of the n - 1 lowest buoyancies, its tendency is h Ċ[n - 1], with Ċ[n] = Σ_{m≤n} Ḃ★[m]. Ċ at the ends of a band
+of tied slots does not depend on the order of the tied cells, and within a band Ṗ★ is interpolated linearly between
+its ends, which averages over the tied cells. Then
 
     Ṗ★(z★) = h (Ċ[n₁ - 1] + Ċ[n₂]) / 2,
 
@@ -71,11 +71,14 @@ Storage of the [`Sorting`](@ref) method, on a sorted column of N = Nx Ny Nz slot
 
 * `flat_values`: N values in linear order: the flattened b or Ḃ of the cells, from which b★ or Ḃ★ is gathered, and
   then Ψ or Ṗ★ at the slot centres, which are averaged over each level
-* `permutation`: the linear indices of the flattened cells, in the order of b★
+* `permutation`: the linear indices of the flattened cells, in the order of b★, as `Int32`, as are the slot indices
+  and the bands, so that N ≤ 2³¹ - 1
 * `slot_indices`: N slot indices in the order of b★: the scratch of the sort on the CPU, and then the first or the
   last slot of the band of each slot
 * `sorted_buoyancy`: b★ on the slots, densest first
 * `slot_potential`: P★, Ψ at the bottom face of each slot
+* `cumulative_tendency`: the scratch of the tendency step, shared by every reference tendency of z★: Ḃ★, the buoyancy
+  tendencies in the order of b★, and then in place Ċ[n] = Σ_{m≤n} Ḃ★[m]
 * `band_first`, `band_last`: the first and the last slot, n₁ and n₂, of the band of each cell, of the size of the grid
 * `level_sum`: the sums over the Nx Ny slots of each level, of size (1, Nz)
 * `bottom`: height of the bottom of the domain
@@ -87,6 +90,7 @@ struct SortingWorkspace{V, P, B, L, FT}
     slot_indices :: P
     sorted_buoyancy :: V
     slot_potential :: V
+    cumulative_tendency :: V
     band_first :: B
     band_last :: B
     level_sum :: L
@@ -109,31 +113,12 @@ function reference_state_workspace(::Sorting, grid)
     bottom = convert(FT, znode(1, 1, 1, cpu_grid, Center(), Center(), Face()))
     slot_thickness = convert(FT, Δzᶜᶜᶜ(1, 1, 1, cpu_grid) / (Nx * Ny))
 
-    return SortingWorkspace(on_architecture(arch, zeros(FT, N)), on_architecture(arch, zeros(Int, N)),
-                            on_architecture(arch, zeros(Int, N)), on_architecture(arch, zeros(FT, N)),
-                            on_architecture(arch, zeros(FT, N)), on_architecture(arch, zeros(Int32, Nx, Ny, Nz)),
+    return SortingWorkspace(on_architecture(arch, zeros(FT, N)), on_architecture(arch, zeros(Int32, N)),
+                            on_architecture(arch, zeros(Int32, N)), on_architecture(arch, zeros(FT, N)),
+                            on_architecture(arch, zeros(FT, N)), on_architecture(arch, zeros(FT, N)),
+                            on_architecture(arch, zeros(Int32, Nx, Ny, Nz)),
                             on_architecture(arch, zeros(Int32, Nx, Ny, Nz)), on_architecture(arch, zeros(FT, 1, Nz)),
                             bottom, slot_thickness)
-end
-
-"""
-    SortingTendencyWorkspace
-
-Storage of the tendency step of the [`Sorting`](@ref) method, on the sorted column of N slots:
-
-* `sorted_tendency`: Ḃ★, the buoyancy tendencies in the order of b★
-* `cumulative_tendency`: Ċ[n] = Σ_{m≤n} Ḃ★[m]
-"""
-struct SortingTendencyWorkspace{V}
-    sorted_tendency :: V
-    cumulative_tendency :: V
-end
-
-function reference_tendency_workspace(::Sorting, grid)
-    arch = architecture(grid)
-    FT = eltype(grid)
-    N = prod(size(grid))
-    return SortingTendencyWorkspace(on_architecture(arch, zeros(FT, N)), on_architecture(arch, zeros(FT, N)))
 end
 
 #####
@@ -270,23 +255,27 @@ end
                                                                  band_last[i, j, k], cumulative_tendency, slot_thickness)
 end
 
+# Ṗ★(z★) in each cell, unless only Ṗ★ᶜᶜᶜ is asked for
+compute_parcel_reference_tendency!(::Nothing, workspace, cumulative_tendency) = nothing
+
+compute_parcel_reference_tendency!(parcel_tendency, workspace, cumulative_tendency) =
+    launch!(architecture(parcel_tendency.grid), parcel_tendency.grid, :xyz, _compute_parcel_reference_tendency!,
+            parcel_tendency.data, workspace.band_first, workspace.band_last, cumulative_tendency, workspace.slot_thickness)
+
 function compute_reference_tendency!(parcel_tendency, tendency, ::Sorting)
-    grid = parcel_tendency.grid
-    arch = architecture(grid)
+    grid = tendency.reference_height.grid
     N = prod(size(grid))
     workspace = tendency.reference_height.operand.workspace
     h = workspace.slot_thickness
-    Ḃ★ = tendency.workspace.sorted_tendency
-    Ċ = tendency.workspace.cumulative_tendency
+    Ċ = workspace.cumulative_tendency
 
     # Ḃ★: the buoyancy tendencies in the order of b★, gathered through the permutation of the reference state; the
-    # order within a run of tied buoyancies does not matter
+    # order within a run of tied buoyancies does not matter. Then Ċ, summed in place
     flatten_interior!(workspace.flat_values, tendency.buoyancy_tendency, grid)
-    Ḃ★ .= view(workspace.flat_values, workspace.permutation)
-    cumsum!(Ċ, Ḃ★)
+    Ċ .= view(workspace.flat_values, workspace.permutation)
+    cumsum!(Ċ, Ċ)
 
-    launch!(arch, grid, :xyz, _compute_parcel_reference_tendency!, parcel_tendency.data, workspace.band_first,
-            workspace.band_last, Ċ, h)
+    compute_parcel_reference_tendency!(parcel_tendency, workspace, Ċ)
 
     # Ṗ★ᶜᶜᶜ: the mean over each level's slots of Ṗ★ at the slot centres, with the bands of the slots gathered through
     # the permutation

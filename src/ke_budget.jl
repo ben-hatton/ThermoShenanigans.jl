@@ -124,8 +124,27 @@ for (dir, average_to_face, velocity_component, wall_mask) in ((:x, ℑxᶠᵃᵃ
     end
 end
 
-# The data of the nonhydrostatic pressure and of the hydrostatic pressure anomaly, which may be `nothing`
-pressure_data(model) = (model.pressures.pNHS.data, maybe_data(model.pressures.pHY′))
+# p_NHS at the cell centres, read from the data of the model's `pNHS`
+@inline nonhydrostatic_pressureᶜᶜᶜ(i, j, k, grid, nonhydrostatic_pressure) = @inbounds nonhydrostatic_pressure[i, j, k]
+
+#=
+p_NHS as a computed `Field`, whose halos `compute!` fills from the interior, as in Oceanostics v0.21.7
+(`src/KineticEnergyEquation.jl:451-459`). The `_field` suffix keeps the function apart from the argument name
+`nonhydrostatic_pressure` of `pressureᶜᶜᶜ`.
+=#
+nonhydrostatic_pressure_field(model) =
+    Field(center_operation(nonhydrostatic_pressureᶜᶜᶜ, model.grid, model.pressures.pNHS.data))
+
+#=
+The nonhydrostatic pressure, as a computed `Field`, and the data of the hydrostatic pressure anomaly, which may be
+`nothing`. p_NHS is read through a computed `Field` because after a time step the halos of `pNHS` hold p·Δτ, not p:
+the pressure correction divides p·Δτ by Δτ over the interior only (Oceananigans 0.116.1,
+`src/Models/NonhydrostaticModels/pressure_correction.jl:103-106`). Computing a diagnostic computes the `Field`: a
+`KernelFunctionOperation` computes its arguments (`src/AbstractOperations/kernel_function_operation.jl:112`), and a
+`Tuple` argument falls through the generic `compute_at!` to `compute!`, which computes the `Field`s inside it
+(`src/Fields/field.jl:521` and `:480`).
+=#
+pressure_data(model) = (nonhydrostatic_pressure_field(model), maybe_data(model.pressures.pHY′))
 maybe_data(::Nothing) = nothing
 maybe_data(field) = field.data
 
@@ -149,3 +168,43 @@ function ke_flux(model, z★::ReferenceHeightField)
             y = KernelFunctionOperation{Center, Face, Center}(with_reference_state, model.grid, z★, ke_flux_y, args...),
             z = KernelFunctionOperation{Center, Center, Face}(with_reference_state, model.grid, z★, ke_flux_z, args...))
 end
+
+#=
+u ∂ₜu, v ∂ₜv and w ∂ₜw at the velocity points, with ∂ₜ𝐮 = G_𝐮 - ∇p_NHS, G_𝐮 the model's tendencies, which hold
+- ∇p_HY′ in u and v, and p_NHS read through `nonhydrostatic_pressure_field`. After `uᵢGᵢᶜᶜᶜ` of Oceanostics v0.21.7
+(`src/KineticEnergyEquation.jl:103-123`), which omits the pressure term.
+=#
+@inline u_tendency_workᶠᶜᶜ(i, j, k, grid, velocities, tendencies, nonhydrostatic_pressure) =
+    @inbounds velocities.u[i, j, k] * (tendencies.u[i, j, k] - ∂xᶠᶜᶜ(i, j, k, grid, nonhydrostatic_pressure))
+@inline v_tendency_workᶜᶠᶜ(i, j, k, grid, velocities, tendencies, nonhydrostatic_pressure) =
+    @inbounds velocities.v[i, j, k] * (tendencies.v[i, j, k] - ∂yᶜᶠᶜ(i, j, k, grid, nonhydrostatic_pressure))
+@inline w_tendency_workᶜᶜᶠ(i, j, k, grid, velocities, tendencies, nonhydrostatic_pressure) =
+    @inbounds velocities.w[i, j, k] * (tendencies.w[i, j, k] - ∂zᶜᶜᶠ(i, j, k, grid, nonhydrostatic_pressure))
+
+# Oceanostics has no equivalent
+# ∂ₜ𝒦 = ℑx(u ∂ₜu) + ℑy(v ∂ₜv) + ℑz(w ∂ₜw)
+@inline ke_tendencyᶜᶜᶜ(i, j, k, grid, velocities, tendencies, nonhydrostatic_pressure) =
+    ℑxᶜᵃᵃ(i, j, k, grid, u_tendency_workᶠᶜᶜ, velocities, tendencies, nonhydrostatic_pressure) +
+    ℑyᵃᶜᵃ(i, j, k, grid, v_tendency_workᶜᶠᶜ, velocities, tendencies, nonhydrostatic_pressure) +
+    ℑzᵃᵃᶜ(i, j, k, grid, w_tendency_workᶜᶜᶠ, velocities, tendencies, nonhydrostatic_pressure)
+
+"""
+$(TYPEDSIGNATURES)
+
+Return the tendency ∂ₜ𝒦 = ℑx(u ∂ₜu) + ℑy(v ∂ₜv) + ℑz(w ∂ₜw) of the [`kinetic_energy`](@ref) of `model` at
+(Center, Center, Center), with ∂ₜ𝐮 = G_𝐮 - ∇p_NHS and G_𝐮 the model's tendencies. For a divergence-free velocity on a
+regular grid, with no forcing of the velocities, Coriolis or background fields, in every cell
+
+    ∂𝒦/∂t = A_𝒦 - ∇·j_𝒦 + ℑz[w (b̃ - b★)] - ε
+
+exactly, with A_𝒦 the [`ke_advection`](@ref), j_𝒦 the [`ke_flux`](@ref), ℑz[w (b̃ - b★)] the
+[`available_buoyancy_work`](@ref) and ε the [`viscous_dissipation`](@ref).
+
+It reads the model's tendencies `Gⁿ`, which `time_step!`, `set!` and `update_state!` compute for the current state; it
+is valid after any of them. p_NHS is that of the model's last pressure correction, as in [`ke_flux`](@ref): after
+`set!`, the potential of the projection of the velocity, and after `time_step!`, the pressure of its last substep. It
+differs from the pressure of `Gⁿ` by a flux divergence, so that ∫ ∂ₜ𝒦 dV is exact and the budget closes in every cell.
+The tendencies of the velocities by their `FluxBoundaryCondition`s are not included.
+"""
+ke_tendency(model) = center_operation(ke_tendencyᶜᶜᶜ, model.grid, field_data(model.velocities), model_tendencies(model),
+                                      nonhydrostatic_pressure_field(model))

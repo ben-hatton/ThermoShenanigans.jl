@@ -15,10 +15,13 @@ ThermoShenanigans.jl is an extension to Oceananigans.jl that implements generic 
   `test/test_groups.jl` (e.g. `run_tests("energetics")`). Do not run the full suite after every change.
 - Run the full suite (`TEST_GROUP=all`) once, when a task is finished and before giving the commit
   command. Report its result and wall time.
-- Run tests in one persistent session started with `julia --project -i test/session.jl` (in a Julia
-  REPL tool if one is available), calling `run_tests(...)` and `run_doctests_and_imports()`, so that
-  the compiled tests are reused between runs. Start a new session only after a change to a struct or
-  to the test environment.
+- Run tests in one persistent Julia session, so compiled tests are reused. Use a Julia REPL tool if
+  available. Otherwise start, in the background, `mkfifo $S/in && tail -f $S/in | julia --project > $S/log 2>&1`
+  (no `-i` and no script file: with `-i`, piped commands run only when the pipe closes; with a file,
+  Julia exits after it). Send each command as one line, first `include("test/session.jl")`, then e.g.
+  `try; revise(); run_tests("energetics"); catch e; showerror(stdout, e); end; println("DONE-2"); flush(stdout)`,
+  and wait for the tag in `$S/log`. Stop it with `pkill -f "[t]ail -f $S/in"`. Start a new session only
+  after a change to a struct or to the test environment.
 - Doctests and the explicit-imports check run only in the full suite, or when a docstring, export
   or import changed (`TEST_DOCTESTS_AND_IMPORTS=true`, or `run_doctests_and_imports()` in the session).
 - Keep test grids between 4³ and 8³ and reuse the shared test models in

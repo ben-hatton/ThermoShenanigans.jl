@@ -13,34 +13,39 @@ export
     ThermodynamicBuoyancy, ThermodynamicDiffusivity, θ_production_forcing, thermodynamic_model_components,
 
     # Thermodynamic diagnostics
-    thermodynamic_operation, viscous_dissipation, θ_production, buoyancy_production,
+    thermodynamic_operation, internal_energy, potential_energy_tendency, viscous_dissipation, θ_production, buoyancy_production,
     heating_buoyancy_production, nonlinear_buoyancy_production, entropy_production, potential_energy_conversion,
     θ_flux, salt_flux, buoyancy_flux, buoyancy_work, buoyancy_tendency, advective_buoyancy_tendency,
 
     # Reference state and local energetics
     Sorting, reference_height, reference_displacement, reference_potential, reference_buoyancy, reference_work,
-    available_potential_energy, background_potential_energy, background_gravitational_energy,
+    available_potential_energy, background_potential_energy, gravitational_energy, background_gravitational_energy,
 
     # Local APE budget
     ape_production, heating_ape_production, nonlinear_ape_production, ape_dissipation, ape_flux, ape_advection,
-    available_buoyancy_work, spurious_ape_production, reference_tendency_work,
+    available_buoyancy_work, spurious_ape_production, reference_tendency_work, ape_tendency,
 
     # Local KE and BPE budgets
-    kinetic_energy, ke_advection, ke_flux, bpe_flux, bpe_advection, spurious_bpe_production
+    kinetic_energy, ke_advection, ke_flux, bpe_flux, bpe_advection, spurious_bpe_production, ke_tendency,
+    bpe_tendency,
+
+    # Isopycnal budget of the reference buoyancy
+    isopycnal_buoyancy_production, isopycnal_buoyancy_flux_divergence, isopycnal_advective_buoyancy_tendency,
+    isopycnal_wall_buoyancy_flux_divergence, effective_diapycnal_diffusivity, numerical_diapycnal_diffusivity
 
 using DocStringExtensions: TYPEDSIGNATURES
 using KernelAbstractions: @index, @kernel
 using Oceananigans: Oceananigans
 using Oceananigans.Advection: div_Uc, div_𝐯u, div_𝐯v, div_𝐯w, half_ϕ²
 using Oceananigans.Architectures: CPU, architecture, on_architecture
-using Oceananigans.BoundaryConditions: fill_halo_regions!
+using Oceananigans.BoundaryConditions: BoundaryCondition, Bottom, Flux, Top, explicit_flux, fill_halo_regions!, getbc
 using Oceananigans.Fields: Field, FieldStatus, compute_at!, interior, set_status!
-using Oceananigans.Grids: Center, Face, NegativeZDirection, XYZRegularRG, znode
-using Oceananigans.Operators: ∂xᶠᶜᶜ, ∂yᶜᶠᶜ, ∂zᶜᶜᶠ, ℑxᶠᵃᵃ, ℑyᵃᶠᵃ, ℑzᵃᵃᶠ, ℑxᶜᵃᵃ, ℑyᵃᶜᵃ, ℑzᵃᵃᶜ,
+using Oceananigans.Grids: Center, Face, NegativeZDirection, XYZRegularRG, inactive_cell, znode
+using Oceananigans.Operators: ∂xᶠᶜᶜ, ∂yᶜᶠᶜ, ∂zᶜᶜᶠ, ∂zᶜᶜᶜ, ℑxᶠᵃᵃ, ℑyᵃᶠᵃ, ℑzᵃᵃᶠ, ℑxᶜᵃᵃ, ℑyᵃᶜᵃ, ℑzᵃᵃᶜ,
                               ℑxyᶜᶜᵃ, ℑxzᶜᵃᶜ, ℑyzᵃᶜᶜ, δxᶜᵃᵃ, δxᶠᵃᵃ, δyᵃᶜᵃ, δyᵃᶠᵃ, δzᵃᵃᶜ, δzᵃᵃᶠ,
-                              Axᶜᶜᶜ, Axᶠᶜᶜ, Axᶠᶠᶜ, Axᶠᶜᶠ, Ayᶜᶜᶜ, Ayᶜᶠᶜ, Ayᶠᶠᶜ, Ayᶜᶠᶠ, Azᶜᶜᶜ, Azᶜᶜᶠ, Azᶠᶜᶠ, Azᶜᶠᶠ,
+                              Ax_qᶠᶜᶜ, Ay_qᶜᶠᶜ, Az_qᶜᶜᶠ, Axᶜᶜᶜ, Axᶠᶜᶜ, Axᶠᶠᶜ, Axᶠᶜᶠ, Ayᶜᶜᶜ, Ayᶜᶠᶜ, Ayᶠᶠᶜ, Ayᶜᶠᶠ, Azᶜᶜᶜ, Azᶜᶜᶠ, Azᶠᶜᶠ, Azᶜᶠᶠ,
                               Vᶜᶜᶜ, Vᶠᶜᶜ, Vᶜᶠᶜ, Vᶜᶜᶠ, Δzᶜᶜᶜ, Δzᶜᶜᶠ
-using Oceananigans.AbstractOperations: KernelFunctionOperation
+using Oceananigans.AbstractOperations: KernelFunctionOperation, _compute!
 using Oceananigans.Forcings: Forcing, MultipleForcings
 using Oceananigans.Utils: launch!, prettysummary
 using Oceananigans.TimeSteppers: ExplicitTimeDiscretization
@@ -48,7 +53,8 @@ using Oceananigans.BuoyancyFormulations: BuoyancyForce, θ_and_sᴬ
 using Oceananigans.TurbulenceClosures: AbstractTurbulenceClosure, ScalarDiffusivity, biharmonic_mask_x, biharmonic_mask_y, biharmonic_mask_z,
                                        viscous_flux_ux, viscous_flux_uy, viscous_flux_uz, viscous_flux_vx, viscous_flux_vy,
                                        viscous_flux_vz, viscous_flux_wx, viscous_flux_wy, viscous_flux_wz,
-                                       min_Δxyz, ThreeDimensionalFormulation
+                                       min_Δxyz, ThreeDimensionalFormulation, x_peripheral_node, y_peripheral_node,
+                                       z_peripheral_node
 
 import Oceananigans.Fields: compute!
 import Oceananigans.Utils: with_tracers
@@ -69,5 +75,6 @@ include("sorting.jl")
 include("ape_budget.jl")
 include("ke_budget.jl")
 include("bpe_budget.jl")
+include("reference_buoyancy_budget.jl")
 
 end # module

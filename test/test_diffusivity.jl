@@ -51,6 +51,36 @@ function test_diffusivity()
             end
         end
 
+        @testset "Fickian fluxes are the model's own fluxes" begin
+            # At rest and with no forcing, the tendencies are - ∇·j of the closure's fluxes in every cell, wall cells
+            # included, with the default no-flux walls
+            θᵢ(x, y, z) = 283 + 2 * (1 + z / 100) + 1e-2 * rand()
+            Sᵢ(x, y, z) = 0.035 + 1e-4 * rand()
+
+            model = fickian_model(grid, cabbeling)
+            set!(model, θ = θᵢ, S = Sᵢ)
+            G_θ = θ_tendency(model)
+            G_S = Array(interior(model.timestepper.Gⁿ.S))
+            @test G_θ ≈ .- divergence(θ_flux(model), grid) rtol = 1e-12
+            @test G_S ≈ .- divergence(salt_flux(model), grid) rtol = 1e-12
+
+            model = fickian_constant_salinity_model(grid)
+            set!(model, θ = θᵢ)
+            @test θ_tendency(model) ≈ .- divergence(θ_flux(model), grid) rtol = 1e-12
+            @test all(component -> all(iszero, computed(component)), salt_flux(model))
+
+            # A model type of its own, for its ValueBoundaryCondition, which only a Fickian model accepts: the model's
+            # closure carries the wall flux, and so does the diagnostic θ flux
+            boundary_conditions = (; θ = FieldBoundaryConditions(top = ValueBoundaryCondition(283.5)))
+            model = fickian_model(grid, cabbeling; boundary_conditions)
+            set!(model, θ = θᵢ, S = Sᵢ)
+            G_θ = θ_tendency(model)
+            wall_flux = z_flux(model, 1)[:, :, end]
+            @test G_θ ≈ .- divergence(θ_flux(model), grid) rtol = 1e-12
+            @test computed(θ_flux(model).z)[:, :, end] == wall_flux
+            @test all(!iszero, wall_flux)
+        end
+
         @testset "Walls and conservation" begin
             model = component_model(grid, cabbeling)
             set!(model, θ = (x, y, z) -> 283 + 2 * (1 + z / 100) + 1e-2 * rand(), S = (x, y, z) -> 0.035 + 1e-4 * rand())
@@ -78,17 +108,54 @@ function test_diffusivity()
             compute_tendencies!(model, [])
             @test all(iszero, interior(model.timestepper.Gⁿ.c))
 
-            # The prescribed fluxes change only the boundary-cell tendencies, by - Q_top / Δz and + Q_bottom / Δz;
-            # with the energy identity on a bounded domain, this means the energy input is π Q_θ + m Q_S at the boundary
+            # The prescribed fluxes change only the boundary-cell tendencies, by + Q_west / Δx, - Q_east / Δx,
+            # + Q_bottom / Δz and - Q_top / Δz, summed in the cells at two walls; with the energy identity on a bounded
+            # domain, this means the energy input is π Q_θ + m Q_S at the boundary
             G₀ = map(name -> Array(interior(model.timestepper.Gⁿ[name])), (θ = :θ, S = :S))
             compute_flux_bc_tendencies!(model)
-            Nz, Δz = size(grid, 3), zspacings(grid, Center())[1]
+            Nx, Nz = size(grid, 1), size(grid, 3)
+            Δx, Δz = xspacings(grid, Center())[1], zspacings(grid, Center())[1]
 
             for name in (:θ, :S)
                 ΔG = Array(interior(model.timestepper.Gⁿ[name])) .- G₀[name]
                 Q = flux_bc_values[name]
-                @test all(ΔG[:, :, Nz] .≈ - Q.top / Δz) && all(ΔG[:, :, 1] .≈ Q.bottom / Δz)
-                @test all(iszero, ΔG[:, :, 2:Nz-1])
+                expected_ΔG = zeros(size(ΔG))
+                expected_ΔG[1, :, :] .+= Q.west / Δx
+                expected_ΔG[Nx, :, :] .-= Q.east / Δx
+                expected_ΔG[:, :, 1] .+= Q.bottom / Δz
+                expected_ΔG[:, :, Nz] .-= Q.top / Δz
+                @test all(ΔG .≈ expected_ΔG) # exactly zero away from the walls
+            end
+        end
+
+        @testset "The diagnostic fluxes are the model's total fluxes [$label]" for (label, build, z_wall_flux_values) in
+                (("consistent", flux_bc_model, name -> flux_bc_values[name]),
+                 ("Fickian", fickian_wall_model, name -> (bottom = 0, top = 0)))
+            # At rest, the tendencies with the Flux conditions applied are σ - ∇·j of the diagnostic fluxes (θ_flux and
+            # salt_flux of thermodynamic_diffusivity.jl) in every cell, wall cells included. Their wall-face values are
+            # the closure's own wall flux (nonzero only for the Fickian closure, from its Value and Gradient conditions)
+            # plus the flux of the Flux conditions
+            model = build(grid)
+            set!(model, θ = (x, y, z) -> 283 + 2 * (1 + z / 100) + 1e-2 * rand(), S = (x, y, z) -> 0.035 + 1e-4 * rand())
+            update_state!(model)
+            compute_tendencies!(model, [])
+            compute_flux_bc_tendencies!(model)
+            G_θ = Array(interior(model.timestepper.Gⁿ.θ))
+            G_S = Array(interior(model.timestepper.Gⁿ.S))
+            σ_θ = computed(θ_production(model))
+
+            @test G_θ .- σ_θ ≈ .- divergence(θ_flux(model), grid) rtol = 1e-12
+            @test G_S ≈ .- divergence(salt_flux(model), grid) rtol = 1e-12
+
+            for (id, name, diagnostic_flux) in ((1, :θ, θ_flux), (2, :S, salt_flux))
+                jx, jy, jz = map(computed, diagnostic_flux(model))
+                closure_x, closure_y, closure_z = fluxes(model, id)
+                Q_x, Q_z = flux_bc_values[name], z_wall_flux_values(name)
+                @test jx[1, :, :] == closure_x[1, :, :] .+ Q_x.west
+                @test jx[end, :, :] == closure_x[end, :, :] .+ Q_x.east
+                @test jy[:, [1, end], :] == closure_y[:, [1, end], :] # no Flux conditions on the y walls
+                @test jz[:, :, 1] == closure_z[:, :, 1] .+ Q_z.bottom
+                @test jz[:, :, end] == closure_z[:, :, end] .+ Q_z.top
             end
         end
 

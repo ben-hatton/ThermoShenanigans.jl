@@ -30,9 +30,30 @@ function test_energy_conservation()
         @testset "Semi-discrete energy identity [$label]" for (label, thermodynamics, model_kwargs) in cases
             model = component_model(grid, thermodynamics; model_kwargs...)
             set_random_state!(model; S = haskey(model.tracers, :S))
+            # Σ V (∂ₜ𝒦 + ∂ₜ𝒫) from the tendencies Gⁿ that `set!` and `update_state!` leave in `model`; read before
+            # `energy_tendency`, which adds the Flux condition tendencies into Gⁿ
+            diagnosed_dEdt = integral(+, field(ke_tendency(model)), field(potential_energy_tendency(model)))
             dEdt, round_off, conversions = energy_tendency(model)
             @info "dE/dt = $dEdt for conversions of $conversions [$label]"
             @test abs(dEdt) < 1e-13 * round_off
+            @test abs(diagnosed_dEdt - dEdt) < 1e-13 * round_off
+        end
+
+        @testset "Semi-discrete energy identity with boundary fluxes" begin
+            # Σ V (u·G + π G_θ + m G_S) = Σ_walls A (π₁ Q_θ + m₁ Q_S), with the tendencies of the model's Flux conditions:
+            # the wall value π₁ Q_θ + m₁ Q_S of `potential_energy_flux_*`, with π and m of the boundary cell
+            # (`boundary_cell_value_*`), is the energy input by the wall fluxes
+            model = flux_bc_model(grid)
+            set_random_state!(model)
+            # Σ V (∂ₜ𝒦 + ∂ₜ𝒫) from the tendencies Gⁿ that `set!` and `update_state!` leave in `model`; read before
+            # `energy_tendency`, which adds the Flux condition tendencies into Gⁿ
+            diagnosed_dEdt = integral(+, field(ke_tendency(model)), field(potential_energy_tendency(model)))
+            dEdt, round_off, _ = energy_tendency(model)
+            π_, m = computed(thermodynamic_operation(model, exner)), computed(thermodynamic_operation(model, chemical_potential_analogue))
+            wall_pe_input = wall_input(π_, m, grid)
+            @info "dE/dt = $dEdt for a wall input of $wall_pe_input [Flux conditions]"
+            @test abs(dEdt - wall_pe_input) < 1e-13 * round_off
+            @test abs(diagnosed_dEdt - wall_pe_input) < 1e-13 * round_off
         end
 
         @testset "Default ℑz b would leak energy for cabbeling" begin
@@ -54,7 +75,7 @@ function test_energy_conservation()
                 set!(model, u = (x, y, z) -> 0.1 * sin(2π * x) * cos(π * z), θ = (x, y, z) -> 283 + 2 * tanh(10 * (z + 0.5)),
                             S = (x, y, z) -> 0.035 - 1e-3 * tanh(10 * (z + 0.5)))
                 u, v, w = model.velocities
-                𝒫 = thermodynamic_operation(model, potential_energy)
+                𝒫 = potential_energy(model)
                 𝒫₀ = CenterField(section)
                 set!(𝒫₀, 𝒫)
 

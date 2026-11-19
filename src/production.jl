@@ -36,36 +36,55 @@ native location of the viscous flux Fᵢⱼ, so that Σ ε V is exactly the disc
     isothermal_∂μ∂S(θ, S, z, thermodynamics) / temperature(θ, S, z, thermodynamics)
 
 # Generated for each direction, with `dir` and the operators of that direction:
-#   face_contraction_{x,y,z}, buoyancy_flux_{x,y,z}, salt_entropy_production_{x,y,z},
-#   unmasked_entropy_production_{x,y,z}, face_entropy_production_{x,y,z}
-for (dir, difference_to_face, derivative_to_face, average_to_face, face_area, face_volume, wall_mask) in
-        ((:x, δxᶠᵃᵃ, ∂xᶠᶜᶜ, ℑxᶠᵃᵃ, Axᶠᶜᶜ, Vᶠᶜᶜ, wall_mask_x),
-         (:y, δyᵃᶠᵃ, ∂yᶜᶠᶜ, ℑyᵃᶠᵃ, Ayᶜᶠᶜ, Vᶜᶠᶜ, wall_mask_y),
-         (:z, δzᵃᵃᶠ, ∂zᶜᶜᶠ, ℑzᵃᵃᶠ, Azᶜᶜᶠ, Vᶜᶜᶠ, wall_mask_z))
+#   face_contraction_{x,y,z}, closure_buoyancy_flux_{x,y,z}, wall_buoyancy_flux_{x,y,z}, buoyancy_flux_{x,y,z},
+#   salt_entropy_production_{x,y,z}, unmasked_entropy_production_{x,y,z}, face_entropy_production_{x,y,z}
+for (dir, difference_to_face, derivative_to_face, average_to_face, boundary_cell_value, face_area, face_volume, wall_mask) in
+        ((:x, δxᶠᵃᵃ, ∂xᶠᶜᶜ, ℑxᶠᵃᵃ, boundary_cell_value_x, Axᶠᶜᶜ, Vᶠᶜᶜ, wall_mask_x),
+         (:y, δyᵃᶠᵃ, ∂yᶜᶠᶜ, ℑyᵃᶠᵃ, boundary_cell_value_y, Ayᶜᶠᶜ, Vᶜᶠᶜ, wall_mask_y),
+         (:z, δzᵃᵃᶠ, ∂zᶜᶜᶠ, ℑzᵃᵃᶠ, boundary_cell_value_z, Azᶜᶜᶠ, Vᶜᶜᶠ, wall_mask_z))
 
     masked_θ_flux_xyz               = Symbol(:masked_θ_flux_, dir)
     masked_salt_flux_xyz            = Symbol(:masked_salt_flux_, dir)
+    wall_θ_flux_xyz                 = Symbol(:wall_θ_flux_, dir)
+    wall_salt_flux_xyz              = Symbol(:wall_salt_flux_, dir)
     salt_gradient_xyz               = Symbol(:salt_gradient_, dir)
     face_contraction_xyz            = Symbol(:face_contraction_, dir)
+    closure_buoyancy_flux_xyz       = Symbol(:closure_buoyancy_flux_, dir)
+    wall_buoyancy_flux_xyz          = Symbol(:wall_buoyancy_flux_, dir)
     buoyancy_flux_xyz               = Symbol(:buoyancy_flux_, dir)
     face_entropy_production_xyz     = Symbol(:face_entropy_production_, dir)
     unmasked_entropy_production_xyz = Symbol(:unmasked_entropy_production_, dir)
     salt_entropy_production_xyz     = Symbol(:salt_entropy_production_, dir)
 
     @eval begin
-        # A (j_θ δf_θ + j_S δf_S)
+        #=
+        A (j_θ δf_θ + j_S δf_S), with the closure fluxes, which are zero at walls: a wall flux enters the boundary cell,
+        whose coefficients it takes, and so has no part in a contraction with a difference across the wall
+        =#
         @inline $face_contraction_xyz(i, j, k, grid, f_θ, f_S, closure, buoyancy_formulation, fields) =
             $face_area(i, j, k, grid) * ($masked_θ_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) *
                                          $difference_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, f_θ, buoyancy_formulation, fields) +
                                          $masked_salt_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) *
                                          $difference_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, f_S, buoyancy_formulation, fields))
 
-        # j_b = ℑ(b_θ) j_θ + ℑ(b_S) j_S
-        @inline $buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) =
+        # ℑ(b_θ) j_θ + ℑ(b_S) j_S with the closure fluxes, zero at walls
+        @inline $closure_buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) =
             $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, ∂b∂θ, buoyancy_formulation, fields) *
             $masked_θ_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) +
             $average_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, ∂b∂S, buoyancy_formulation, fields) *
             $masked_salt_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields)
+
+        # b_θ₁ Q_θ + b_S₁ Q_S, with the coefficients of the boundary cell and the wall fluxes; zero away from walls
+        @inline $wall_buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls) =
+            $boundary_cell_value(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, ∂b∂θ, buoyancy_formulation, fields) *
+            $wall_θ_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls) +
+            $boundary_cell_value(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, ∂b∂S, buoyancy_formulation, fields) *
+            $wall_salt_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls)
+
+        # j_b = ℑ(b_θ) j_θ + ℑ(b_S) j_S at interior faces, and b_θ₁ Q_θ + b_S₁ Q_S at walls
+        @inline $buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls) =
+            $closure_buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) +
+            $wall_buoyancy_flux_xyz(i, j, k, grid, closure, buoyancy_formulation, fields, walls)
 
         # κ_S ℑ((∂μ/∂S)_T / T) (∂S + Γ_S)², zero for constant salinity
         @inline $salt_entropy_production_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) =
@@ -81,6 +100,8 @@ for (dir, difference_to_face, derivative_to_face, average_to_face, face_area, fa
                                            $derivative_to_face(i, j, k, grid, thermodynamic_functionᶜᶜᶜ, temperature, buoyancy_formulation, fields)^2 +
                                            $salt_entropy_production_xyz(i, j, k, grid, closure, buoyancy_formulation, fields))
 
+        # Zero at walls, as the face contractions: the wall fluxes enter the boundary cell, and their entropy
+        # production is not included
         @inline $face_entropy_production_xyz(i, j, k, grid, closure, buoyancy_formulation, fields) =
             $wall_mask(i, j, k, grid, $unmasked_entropy_production_xyz, closure, buoyancy_formulation, fields)
     end
@@ -98,8 +119,9 @@ end
 
 #=
 They take the arguments of a discrete-form `Forcing`, with parameters = (; viscous_closure, closure_fields, diffusivity,
-buoyancy) holding the viscous closure and its fields, the `ThermodynamicDiffusivity` and the `ThermodynamicBuoyancy`,
-as returned by `production_parameters`.
+buoyancy) holding the viscous closure and its fields, the diffusivity and the `ThermodynamicBuoyancy`, as returned by
+`production_parameters`. The diffusivity is the `ThermodynamicDiffusivity` of a consistent model, or the Fickian
+`ScalarDiffusivity` of a `consistent = false` model, which is also its viscous closure.
 =#
 
 is_thermodynamic_diffusivity(closure) = closure isa ThermodynamicDiffusivity
@@ -115,6 +137,17 @@ function production_parameters(closure::Tuple, buoyancy_formulation)
     viscous_closure = only(filter(!is_thermodynamic_diffusivity, closure))
     return (; viscous_closure, closure_fields = nothing, diffusivity, buoyancy = buoyancy_formulation)
 end
+
+#=
+The parameters of the production terms of a Fickian (`consistent = false`) model, whose single `ScalarDiffusivity`
+is both the viscous closure and the diffusivity. Only a κ that is a `NamedTuple` of `Number`s, the constant molecular
+coefficients of a DNS, has a method: any other κ (a `Function`, `Field` or discrete κ, or `κ = nothing`) has none, so
+that every flux diagnostic of such a model fails on the host, and the Fickian fluxes can be evaluated without closure
+fields or clock. ε and the kinetic energy flux use this closure's viscous fluxes, which read only ν.
+=#
+production_parameters(closure::ScalarDiffusivity{<:Any, <:Any, <:Any, <:Any, <:NamedTuple{<:Any, <:Tuple{Vararg{Number}}}},
+                      buoyancy_formulation) =
+    (; viscous_closure = closure, closure_fields = nothing, diffusivity = closure, buoyancy = buoyancy_formulation)
 
 @inline dissipationᶜᶜᶜ(i, j, k, grid, clock, fields, parameters) =
     viscous_dissipation_rateᶜᶜᶜ(i, j, k, grid, parameters.viscous_closure, parameters.closure_fields, clock, fields,
@@ -134,11 +167,17 @@ end
 σ_θ = [ε - j_θ·∇π - j_S·∇m] / π, so that π (σ_θ - ∇·j_θ) - m ∇·j_S = ε - ∇·(π j_θ + m j_S):
 the potential energy 𝒫 gains exactly the kinetic energy lost to viscosity, plus a flux divergence (first law).
 Used as the θ forcing (`θ_production_forcing`), alone or with other θ forcings in `MultipleForcings`.
+A Fickian model has no θ source, so that σ_θ is zero for its `ScalarDiffusivity`.
 =#
 @inline θ_productionᶜᶜᶜ(i, j, k, grid, clock, fields, parameters) =
+    θ_productionᶜᶜᶜ(i, j, k, grid, parameters.diffusivity, clock, fields, parameters)
+
+@inline θ_productionᶜᶜᶜ(i, j, k, grid, ::ThermodynamicDiffusivity, clock, fields, parameters) =
     (dissipationᶜᶜᶜ(i, j, k, grid, clock, fields, parameters) -
      potential_energy_conversionᶜᶜᶜ(i, j, k, grid, clock, fields, parameters)) /
     thermodynamic_functionᶜᶜᶜ(i, j, k, grid, exner, parameters.buoyancy, fields)
+
+@inline θ_productionᶜᶜᶜ(i, j, k, grid, ::ScalarDiffusivity, clock, fields, parameters) = zero(grid)
 
 # σ_b_heating = b_θ σ_θ, the buoyancy production by the θ source
 @inline heating_buoyancy_productionᶜᶜᶜ(i, j, k, grid, clock, fields, parameters) =
